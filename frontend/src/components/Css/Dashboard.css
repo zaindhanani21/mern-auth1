@@ -1,0 +1,157 @@
+/* --- EasyPaisa Inspired Theme --- */
+:root {
+  --ep-green: #050505;    /* Vibrant Green */
+  --ep-bg: #dddfe2;       /* Soft Light Gray */
+  --ep-white: #ffffff;
+  --ep-text: #1f2937;
+  --ep-danger: #ef4444;   /* Soft Red */
+}
+
+.dashboard-layout {
+  background-color: var(--ep-bg);
+  min-height: 100vh;
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* --- Clean Pill Header (Left Greeting, Right Profile) --- */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--ep-white);
+  padding: 15px 25px;
+  border-radius: 40px; /* 🟢 Pill shape */
+  margin-bottom: 25px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.user-greeting-left h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ep-text);
+  margin: 0;
+}
+
+.header-right-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-initials {
+  width: 38px;
+  height: 38px;
+  background: #f0edf1;
+  color: var(--ep-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 800;
+  border: 1px solid #ffffff;
+}
+
+/* --- Action Cards (Simple & Flat) --- */
+.main-actions-row {
+  display: flex;
+  flex-direction: column; /* EasyPaisa vertical stack style */
+  gap: 15px;
+}
+
+.action-card {
+  background: var(--ep-white);
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+}
+
+.action-toggle-btn {
+  width: 100%;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 12px;
+  color: var(--ep-text);
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}/* --- Transaction History Styling --- */
+.tx-list {
+  max-height: 450px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.no-tx-text {
+  text-align: center;
+  color: #64748b;
+  padding: 20px;
+}
+
+.tx-item {
+  background: #ffffff;
+  margin-bottom: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.tx-item:hover {
+  background: #f8fafc;
+}
+
+/* 🟢 Clean status indicators (No double borders) */
+.tx-item.credit { border-left: 5px solid #10b981; } /* Success Green */
+.tx-item.debit { border-left: 5px solid #ef4444; }  /* Danger Red */
+
+.tx-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tx-title {
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.amount-value {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.amount-value.credit { color: #10b981; }
+.amount-value.debit { color: #ef4444; }
+
+/* 🟢 Expanded Section Styling */
+.tx-details {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px dashed #e2e8f0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.tx-details p {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tx-id-value {
+  font-family: 'Courier New', monospace;
+  word-break: break-all; /* 🟢 Prevents IDs from breaking layout */
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.status-badge {
+  color: #10b981;
+  font-weight: 700;
+}
