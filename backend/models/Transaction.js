@@ -1,31 +1,32 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const transactionSchema = new mongoose.Schema({
-    sender: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', 
-        // 🟢 Remove required: true to allow System/Admin deposits
-        required: false 
+const TransactionSchema = new mongoose.Schema(
+    {
+        senderWallet: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Wallet',
+            default: null // Null for deposits
+        },
+        receiverWallet: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Wallet',
+            required: true
+        },
+        amount: { type: Number, required: true },
+        type: {
+            type: String,
+            enum: ['SEND', 'RECEIVE', 'ADD_MONEY'],
+            required: true
+        },
+        description: { type: String },
+        status: {
+            type: String,
+            enum: ['COMPLETED', 'FAILED', 'PENDING'],
+            default: 'COMPLETED'
+        }
     },
-    recipient: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User', 
-        required: [true, "Recipient is required"]
-    },
-    amount: {
-        type: Number,
-        required: [true, "Amount is required"],
-        min: [1, "Amount must be at least 1"]
-    },
-    description: {
-        type: String,
-        default: "Transfer"
-    },
-    status: {
-        type: String,
-        enum: ['completed', 'failed'],
-        default: 'completed'
-    }
-}, { timestamps: true });
+    { timestamps: true }
+);
 
-export default mongoose.model("Transaction", transactionSchema);
+const Transaction = mongoose.model('Transaction', TransactionSchema);
+export default Transaction;

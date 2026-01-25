@@ -59,17 +59,14 @@ export default function VerifyOtp({
       const data = await res.json();
 
       if (res.ok) {
-        // 🟢 NEW: Logic to handle Login Token vs Signup Success
-        if (!isSignupFlow) {
-          // This is a Login Flow - Save the Native Token
+        // 🟢 Save token for BOTH signup and login flows
+        if (data.token) {
           localStorage.setItem("userToken", data.token);
-
           localStorage.setItem("user", JSON.stringify(data.user));
-
-          console.log("Native Token Saved Successfully ✅");
+          console.log("Token Saved Successfully ✅");
         }
 
-        // Continue with your existing success handler (usually redirects to Dashboard)
+        // Continue with success handler
         onVerificationSuccess(data);
       } else if (isSignupFlow) {
         if (res.status === 401 && data.message.includes("expired")) {
@@ -120,14 +117,14 @@ export default function VerifyOtp({
         {/* Header and Subtitle pulled from your existing state */}
         <h2 className="title">{headerText}</h2>
         <p className="subtitle">{instructionText}</p>
-        
+
         {/* Email info box for better UX */}
         <p className="email-info">Code sent to: {pendingData.email}</p>
 
         <form onSubmit={handleSubmit}>
           <input
             /* 🟢 Updated className to use normal otp-input style */
-            className={`input-field otp-input ${isRedirecting ? "disabled" : ""}`}
+            className={`input-field otp-single-input ${isRedirecting ? "disabled" : ""}`}
             type="text"
             placeholder="Enter OTP Code"
             value={otpCode}
@@ -143,7 +140,7 @@ export default function VerifyOtp({
           >
             {isLoading ? "Verifying..." : buttonText}
           </button>
-          
+
           {message && (
             /* 🟢 Status message styling matches your Global.css */
             <p className={`status-message ${message.toLowerCase().includes("success") ? "success" : "error"}`}>

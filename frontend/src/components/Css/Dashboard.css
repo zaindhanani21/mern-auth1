@@ -1,111 +1,229 @@
-/* --- EasyPaisa Inspired Theme --- */
-:root {
-  --ep-green: #050505;    /* Vibrant Green */
-  --ep-bg: #dddfe2;       /* Soft Light Gray */
-  --ep-white: #ffffff;
-  --ep-text: #1f2937;
-  --ep-danger: #ef4444;   /* Soft Red */
-}
+/* Dashboard.css - Premium Fintech Layout */
 
 .dashboard-layout {
-  background-color: var(--ep-bg);
   min-height: 100vh;
+  background: var(--bg-app);
+  color: var(--text-main);
   padding: 20px;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  justify-content: center;
 }
 
-/* --- Clean Pill Header (Left Greeting, Right Profile) --- */
+.dashboard-container {
+  width: 100%;
+  max-width: 1200px;
+  /* Wide screen max layout */
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* --- HEADER --- */
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--ep-white);
-  padding: 15px 25px;
-  border-radius: 40px; /* 🟢 Pill shape */
-  margin-bottom: 25px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 20px 30px;
+  background: var(--bg-card);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-sm);
+  animation: slideIn 0.5s ease-out;
 }
 
 .user-greeting-left h2 {
-  font-size: 1.1rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  color: var(--ep-text);
-  margin: 0;
 }
 
 .header-right-profile {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.user-initials {
-  width: 38px;
-  height: 38px;
-  background: #f0edf1;
-  color: var(--ep-green);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-weight: 800;
-  border: 1px solid #ffffff;
-}
-
-/* --- Action Cards (Simple & Flat) --- */
-.main-actions-row {
-  display: flex;
-  flex-direction: column; /* EasyPaisa vertical stack style */
   gap: 15px;
 }
 
-.action-card {
-  background: var(--ep-white);
-  border-radius: 20px;
-  padding: 20px;
-  border: 1px solid #e5e7eb;
+.user-initials {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
 }
 
+.logout-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* --- MAIN ACTIONS GRID --- */
+.main-actions-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  animation: fadeIn 0.8s ease-out;
+}
+
+/* --- ACTION CARDS (TILES) --- */
+.action-card {
+  background: var(--bg-card);
+  border-radius: 24px;
+  padding: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+/* Distinct Styles for Specific Cards */
+.action-card:first-child .display-area {
+  /* Balance Card Special Styling */
+  background: var(--primary-gradient);
+  padding: 20px;
+  border-radius: 16px;
+  text-align: center;
+  color: white;
+  margin-top: 10px;
+  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+}
+
+/* Buttons inside cards */
 .action-toggle-btn {
   width: 100%;
-  padding: 12px;
-  background: #f9fafb;
-  border: 1px solid #f3f4f6;
-  border-radius: 12px;
-  color: var(--ep-text);
-  font-weight: 700;
-  cursor: pointer;
+  padding: 15px;
   text-align: left;
-}/* --- Transaction History Styling --- */
-.tx-list {
-  max-height: 450px;
-  overflow-y: auto;
-  padding: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  border: none;
+  border-radius: 12px;
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
 }
 
-.no-tx-text {
+.action-toggle-btn::after {
+  content: '→';
+  transition: transform 0.2s;
+}
+
+.action-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Active State layout updates */
+.display-area {
+  margin-top: 10px;
+  animation: fadeIn 0.3s;
+}
+
+/* Balance Text */
+.label {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.amount-text {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+/* Forms inside cards */
+.transfer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transfer-form input {
+  background: var(--bg-app);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.transfer-form input:focus {
+  border-color: var(--primary);
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+}
+
+/* Security Locked State */
+.security-lock-notice {
   text-align: center;
-  color: #64748b;
   padding: 20px;
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 12px;
+  border: 1px dashed rgba(239, 68, 68, 0.3);
+}
+
+/* HISTORY LIST */
+.tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 5px;
 }
 
 .tx-item {
-  background: #ffffff;
-  margin-bottom: 12px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid #f1f5f9;
+  background: var(--bg-app);
+  padding: 15px;
+  border-radius: 12px;
+  border-left: 4px solid transparent;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: background 0.2s;
 }
 
 .tx-item:hover {
-  background: #f8fafc;
+  background: #253045;
+  /* Slightly lighter than bg-app */
 }
 
-/* 🟢 Clean status indicators (No double borders) */
-.tx-item.credit { border-left: 5px solid #10b981; } /* Success Green */
-.tx-item.debit { border-left: 5px solid #ef4444; }  /* Danger Red */
+/* Dynamic Borders */
+.tx-item.credit {
+  border-left-color: var(--success);
+}
+
+.tx-item.debit {
+  border-left-color: var(--text-muted);
+}
 
 .tx-header-row {
   display: flex;
@@ -114,44 +232,42 @@
 }
 
 .tx-title {
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0;
+  font-weight: 500;
   font-size: 0.95rem;
 }
 
 .amount-value {
-  font-weight: 800;
-  font-size: 1rem;
+  font-weight: 700;
 }
 
-.amount-value.credit { color: #10b981; }
-.amount-value.debit { color: #ef4444; }
+.amount-value.credit {
+  color: var(--success);
+}
 
-/* 🟢 Expanded Section Styling */
+.amount-value.debit {
+  color: var(--text-main);
+}
+
 .tx-details {
   margin-top: 15px;
   padding-top: 15px;
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 0.85rem;
-  color: #475569;
-}
-
-.tx-details p {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
 .tx-id-value {
-  font-family: 'Courier New', monospace;
-  word-break: break-all; /* 🟢 Prevents IDs from breaking layout */
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 4px;
+  color: var(--primary);
+  font-family: monospace;
 }
 
+/* Status Badge */
 .status-badge {
-  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
   font-weight: 700;
 }

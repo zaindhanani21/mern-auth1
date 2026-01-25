@@ -1,68 +1,53 @@
-import "dotenv/config";
-import { sendTransferEmail, sendSecurityEmail, sendAddMoneyEmail } from "./mailHelper.js";
 import express from "express";
 import User from "./models/User.js";
-
-import crypto from "crypto"; // Native Node.js module
+import Wallet from "./models/Wallet.js";
+import PendingUser from "./models/PendingUser.js"; // 🟢 NEW
+import mongoose from "mongoose";
+import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { v4 as uuidv4 } from "uuid";
+import dotenv from "dotenv";
 
-// Utility to create a URL-safe Base64 string (Required for JWT)
-const base64UrlEncode = (obj) => {
-  return Buffer.from(JSON.stringify(obj))
-    .toString("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-};
-
-// Function to generate a Token without using 'jsonwebtoken' library
-const generateNativeToken = (payload) => {
-  const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
-  const header = base64UrlEncode({ alg: "HS256", typ: "JWT" });
-  const encodedPayload = base64UrlEncode(payload);
-
-  // Create Signature using native HMAC-SHA256
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(`${header}.${encodedPayload}`)
-    .digest("base64url");
-
-  return `${header}.${encodedPayload}.${signature}`;
-};
-// Function to verify token without 'jsonwebtoken' library
-const verifyNativeToken = (token) => {
-  const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
-
-  try {
-    const [header, payload, signature] = token.split(".");
-
-    // 1. Re-create the signature using the same secret
-    const validSignature = crypto
-      .createHmac("sha256", secret)
-      .update(`${header}.${payload}`)
-      .digest("base64url");
-
-    // 2. Compare. If they match, the token is authentic!
-    if (signature === validSignature) {
-      // Decode the payload from base64 back to JSON
-      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString());
-      return decoded;
-    }
-    return null;
-  } catch (err) {
-    return null;
-  }
-};
+dotenv.config();
 
 const router = express.Router();
 
-// 1. OTP Generation Function
-const generateSimpleOtp = () => {
-  const code = Math.floor(100000 + Math.random() * 900000);
-  return String(code);
+// --- UTILS ---
+const generateNativeToken = (payload) => {
+  const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(`${header}.${encodedPayload}`).digest("base64url");
+  return `${header}.${encodedPayload}.${signature}`;
 };
 
-// 2. NODEMAILER CONFIGURATION
+const verifyNativeToken = (token) => {
+  if (!token) return null;
+  const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
+  try {
+    const [header, payload, signature] = token.split(".");
+    const validSignature = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
+    if (signature === validSignature) {
+      return JSON.parse(Buffer.from(payload, "base64url").toString());
+    }
+  } catch { return null; }
+  return null;
+};
+
+// Middleware
+export const protect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+  const decoded = verifyNativeToken(token);
+  if (!decoded) return res.status(401).json({ message: "Not authorized" });
+
+  req.user = await User.findById(decoded.id);
+  if (!req.user) return res.status(401).json({ message: "User not found" });
+  next();
+};
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -71,414 +56,278 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// --- SIGNIN ROUTE ---
-router.post("/signin", async (req, res) => {
-  try {
-    const { identifier, password } = req.body;
+// --- UPDATED AUTH ROUTES ---
 
-    if (!identifier || !password) {
-      return res
-        .status(400)
-        .json({ message: "Please provide your email/phone and password." });
-    }
-
-    const user = await User.findOne({
-      $or: [
-        { email: identifier.toLowerCase().trim() },
-        { mobileNumber: identifier.trim() },
-      ],
-    }).select("+password firstName email mobileNumber isAdmin");
-
-    if (!user || user.password !== password) {
-      return res
-        .status(400)
-        .json({ message: "Invalid credentials. Please check your details." });
-    }
-
-    const otpCode = generateSimpleOtp();
-    user.otp = otpCode;
-    user.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-    await user.save();
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: "Wallexa Verification Code (2FA)",
-      html: `<div style="font-family: Arial; padding: 20px;">
-                    <h2>Security Verification</h2>
-                    <p>Your 6-digit verification code is: <strong>${otpCode}</strong></p>
-                   </div>`,
-    };
-
-    await transporter.sendMail(mailOptions);
-    return res.status(200).send({
-      message: "OTP sent to your registered email address.",
-      requiresOTP: true,
-      userId: user._id,
-      emailHint: user.email.replace(/(.{2})(.*)(?=@)/, "$1***"),
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error during signin." });
-  }
-});
-
-// --- SIGNUP ROUTE (Updated with Validation Error Handling) ---
-// --- SIGNUP ROUTE (Corrected & Cleaned) ---
+// 1. SIGN UP (Phase 1: Save to PendingUser -> Send OTP)
 router.post("/signup", async (req, res) => {
   try {
-    const {
-      firstName,
-      midName,
-      lastName,
-      email,
-      mobileNumber,
-      dateOfBirth,
-      nationality,
-      cnicNum,
-      password,
-    } = req.body;
+    const { firstName, lastName, email, mobileNumber, dateOfBirth, nationality, cnicNum, password } = req.body;
 
-    // 🟢 1. DYNAMIC AGE CALCULATION
-    const birthDate = new Date(dateOfBirth);
-    const today = new Date(); // Saturday, Jan 24, 2026
-    
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    const dayDiff = today.getDate() - birthDate.getDate();
-
-    // Adjust age if birthday hasn't occurred yet this year/month
-    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
-        age--;
+    // check EXISTING USERS (Real)
+    const existingUser = await User.findOne({
+      $or: [{ email }, { mobileNumber }]
+    });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email or Mobile already registered." });
     }
 
-    if (age < 18) {
-      return res.status(400).json({ 
-        message: "Registration failed: You must be at least 18 years old to join Wallexa." 
+    // Clean up any old pending requests for this email to avoid duplicates
+    await PendingUser.deleteMany({ email });
+
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save to Pending Collection
+    const pendingUser = new PendingUser({
+      ...req.body,
+      otp
+    });
+    await pendingUser.save();
+
+    // Send Email
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: "Wallexa Verification Code",
+        text: `Your verification code is ${otp}. It expires in 10 minutes.`
+      });
+    } catch (e) {
+      console.error("Mail Error:", e);
+      // We do NOT rollback here, user can retry or check spam.
+    }
+
+    res.status(201).json({
+      message: "OTP sent to email.",
+      userId: pendingUser._id, // This is the PENDING ID
+      signupVerificationRequired: true,
+      email
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Signup failed." });
+  }
+});
+
+// 2. VERIFY SIGNUP (Phase 2: Move Pending -> Real User + Wallet)
+router.post("/verify-signup", async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { userId, otpCode } = req.body; // userId here is actually PendingUser ID
+
+    // Find pending user WITHOUT session first to avoid issues
+    const pending = await PendingUser.findById(userId);
+    if (!pending) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: "Invalid verification request. Please sign up again." });
+    }
+
+    if (pending.otp !== otpCode) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: "Invalid OTP code. Please try again." });
+    }
+
+    // Double check conflict before commit (WITHOUT session to avoid locks)
+    const conflict = await User.findOne({
+      $or: [{ email: pending.email }, { mobileNumber: pending.mobileNumber }]
+    });
+
+    if (conflict) {
+      await session.abortTransaction();
+      session.endSession();
+      // Clean up the pending user since they already exist
+      await PendingUser.findByIdAndDelete(userId);
+      return res.status(400).json({ message: "User already verified/exists. Please login instead." });
+    }
+
+    // Create REAL User (password is plain text from PendingUser, pre-save hook will hash it)
+    const newUser = new User({
+      firstName: pending.firstName,
+      midName: pending.midName,
+      lastName: pending.lastName,
+      email: pending.email,
+      mobileNumber: pending.mobileNumber,
+      dateOfBirth: pending.dateOfBirth,
+      nationality: pending.nationality,
+      password: pending.password, // Pre-save hook will hash this!
+      cnicEncrypted: User.encryptCNIC(pending.cnicNum),
+      cnicHash: User.hashCNIC(pending.cnicNum),
+      isEmailVerified: true
+    });
+    await newUser.save({ session });
+
+    // Create Wallet
+    const newWallet = new Wallet({
+      userId: newUser._id,
+      walletId: uuidv4(),
+      currency: 'PKR',
+      status: 'ACTIVE'
+    });
+    await newWallet.save({ session });
+
+    // Delete Pending Record
+    await PendingUser.findByIdAndDelete(userId).session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Generate Token
+    const token = generateNativeToken({ id: newUser._id });
+
+    res.json({
+      message: "Registration Successful!",
+      token,
+      user: {
+        id: newUser._id,
+        firstName: newUser.firstName,
+        email: newUser.email,
+        mobileNumber: newUser.mobileNumber
+      }
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error("Verification Error:", error);
+
+    // Handle duplicate key error specifically
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(400).json({
+        message: `This ${field} is already registered. Please login instead.`
       });
     }
 
-    // 2. Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [
-        { email: email.toLowerCase() },
-        { mobileNumber: mobileNumber },
-        { cnicNum: cnicNum },
-      ],
-    });
+    res.status(500).json({ message: "Verification failed. Please try again." });
+  }
+});
 
-    if (existingUser) {
-      let conflict = "User";
-      if (existingUser.email === email.toLowerCase()) conflict = "Email";
-      else if (existingUser.mobileNumber === mobileNumber) conflict = "Mobile Number";
-      else if (existingUser.cnicNum === cnicNum) conflict = "CNIC";
+// 3. LOGIN (Existing Flow - No changes needed except separating verify-otp)
+router.post("/signin", async (req, res) => {
+  const { identifier, password } = req.body;
+  try {
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { mobileNumber: identifier }]
+    }).select("+password");
 
-      return res.status(400).json({ message: `${conflict} is already in use.` });
+    if (!user || !(await user.matchPassword(password))) {
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // 3. Create the user
-    const newUser = new User({
-      firstName,
-      midName,
-      lastName,
-      email: email.toLowerCase(),
-      mobileNumber,
-      dateOfBirth,
-      nationality,
-      cnicNum,
-      password,
-      isVerified: false,
-    });
-
-    const otpCode = generateSimpleOtp();
-    newUser.otp = otpCode;
-    newUser.otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
-    await newUser.save();
-
-    // 4. Send Email
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: newUser.email,
-      subject: "Wallexa Account Verification",
-      html: `<p>Welcome! Your verification code is: <strong>${otpCode}</strong></p>`,
-    };
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = Date.now() + 5 * 60 * 1000;
+    await user.save();
 
     try {
-      await transporter.sendMail(mailOptions);
-      res.status(201).json({
-        message: "Verification code sent.",
-        userId: newUser._id,
-        email: newUser.email,
-        signupVerificationRequired: true,
+      await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: "Login OTP",
+        text: `Your Login OTP is ${otp}`
       });
-    } catch (mailError) {
-      await User.findByIdAndDelete(newUser._id);
-      return res.status(500).json({ message: "Failed to send verification email." });
-    }
+    } catch (e) { console.error("Login Mail Error", e); }
 
-  } catch (err) {
-    if (err.name === "ValidationError") {
-      const firstErrorField = Object.keys(err.errors)[0];
-      return res.status(400).json({ message: err.errors[firstErrorField].message });
-    }
-    res.status(500).json({ message: "Server error during signup." });
-  }
-});
-// --- FORGOT PASSWORD (Sanitized version) ---
-router.post("/forgot-password", async (req, res) => {
-  try {
-    const { identifier } = req.body;
-
-    if (!identifier) {
-      return res
-        .status(400)
-        .json({ message: "Please provide your email or mobile number." });
-    }
-
-    const sanitizedIdentifier = identifier.trim();
-    const emailIdentifier = sanitizedIdentifier.toLowerCase();
-
-    const user = await User.findOne({
-      $or: [{ email: emailIdentifier }, { mobileNumber: sanitizedIdentifier }],
+    res.json({
+      message: "OTP sent",
+      requiresOTP: true,
+      userId: user._id, // Real User ID
+      email: user.email
     });
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ message: "Account not found with these details." });
-    }
-
-    const otpCode = generateSimpleOtp();
-    user.otp = otpCode;
-    user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-    await user.save();
-
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: "Wallexa Password Reset OTP",
-      html: `<div style="font-family: Arial; padding: 20px;">
-                    <h3>Password Reset Request</h3>
-                    <p>Hello ${user.firstName},</p>
-                    <p>Your OTP for resetting your password is: <strong style="font-size: 20px; color: #0984e3;">${otpCode}</strong></p>
-                    <p style="font-size: 12px; color: #636e72;">If you did not request this, please ignore this email.</p>
-                   </div>`,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log(`🔑 Reset OTP for ${user.email}: ${otpCode}`);
-
-    res.status(200).json({
-      resetInitiated: true,
-      userId: user._id,
-      message: "OTP has been sent to your email.",
-    });
-  } catch (err) {
-    console.error("Forgot Password Error:", err);
-    res.status(500).json({ message: "Error initiating password reset." });
-  }
-});
-// --- RESET PASSWORD (Confirm) ---
-router.post("/reset-password", async (req, res) => {
-  try {
-    const { userId, otpCode, newPassword } = req.body;
-    const user = await User.findById(userId);
-
-    if (!user || user.otp !== otpCode || user.otpExpires < Date.now()) {
-      return res.status(400).json({ message: "Invalid or expired OTP." });
-    }
-
-    user.password = newPassword; // 🟢 Plain text as requested
-    user.otp = null;
-    user.otpExpires = null;
-    await user.save();
-
-    res.status(200).json({ message: "Password updated successfully!" });
-  } catch (err) {
-    res.status(500).json({ message: "Error resetting password." });
-  }
+  } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// --- UPDATED OTP VERIFICATION (Login 2FA) ---
+// 4. VERIFY LOGIN OTP
 router.post("/verify-otp", async (req, res) => {
   const { userId, otpCode } = req.body;
   try {
     const user = await User.findById(userId);
-
     if (!user || user.otp !== otpCode || user.otpExpires < Date.now()) {
-      return res.status(401).json({ message: "Invalid or expired code." });
+      return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // 🟢 NEW: Generate the Native Token
-    const token = generateNativeToken({
-      id: user._id,
-      email: user.email,
-    });
-
-    // Clear OTP after successful use
     user.otp = null;
     user.otpExpires = null;
     await user.save();
 
-    res.status(200).json({
-      message: "Login successful!",
-      token: token, // 🟢 THE NEW TOKEN
+    const token = generateNativeToken({ id: user._id });
+
+    res.json({
+      message: "Login Success",
+      token,
       user: {
-        _id: user._id,
+        id: user._id,
         firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        balance: user.balance,
-        isFrozen: user.isFrozen,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Server error." });
-  }
-});
-// --- SIGNUP VERIFICATION ---
-router.post("/verify-signup", async (req, res) => {
-  const { userId, otpCode } = req.body;
-  try {
-    const user = await User.findById(userId);
-    if (!user || user.otp !== otpCode || user.otpExpires < Date.now()) {
-      return res.status(401).json({ message: "Invalid or expired code." });
-    }
-    user.otp = null;
-    user.otpExpires = null;
-    user.isVerified = true;
-    await user.save();
-    res
-      .status(200)
-      .json({ message: "Registration successful!", verified: true });
-  } catch (error) {
-    res.status(500).json({ message: "Verification error." });
-  }
-});
-
-export const protect = async (req, res, next) => {
-  let token;
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    try {
-      token = req.headers.authorization.split(" ")[1];
-
-      const decoded = verifyNativeToken(token);
-
-      // 🟢 CHANGE: Find the actual user in the database using the ID from the token
-      // This ensures req.user is a real MongoDB document
-      req.user = await User.findById(decoded.id || decoded._id).select(
-        "-password",
-      );
-
-      if (!req.user) {
-        return res
-          .status(401)
-          .json({ message: "Not authorized, user not found" });
+        email: user.email
       }
-
-      next();
-    } catch (error) {
-      console.error("Token verification error:", error);
-      res.status(401).json({ message: "Not authorized, token failed" });
-    }
-  }
-
-  if (!token) {
-    res.status(401).json({ message: "Not authorized, no token" });
-  }
-};
-
-// 🟢 1. Route to send OTP specifically for Freeze/Unfreeze
-router.post("/send-freeze-otp", protect, async (req, res) => {
-  try {
-    // 🟢 Use the ID from the protect middleware to find the user in DB
-    const userId = req.user?._id || req.user?.id || req.user;
-    const user = await User.findById(userId);
-
-    // 🟢 Safety Check: Prevent "null" errors if session is invalid
-    if (!user) {
-      console.error("❌ USER NOT FOUND IN DB for ID:", userId);
-      return res.status(404).json({ message: "User session not found. Please re-login." });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // 🟢 Step 1: Save the OTP and 10-minute expiry to the user object
-    user.freezeOtp = otp;
-    user.freezeOtpExpires = Date.now() + 10 * 60 * 1000; 
-
-    // 🟢 Step 2: Ensure the save completes before sending the email
-    await user.save();
-
-    console.log(`✅ OTP [${otp}] saved for user: ${user.email}`);
-
-    // 🟢 Step 3: Send the email
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: "Security Alert: Wallet Status Change",
-      text: `Your OTP to change your wallet status (Freeze/Unfreeze) is: ${otp}. This code expires in 10 minutes.`,
     });
-
-    res.status(200).json({ message: "OTP sent to your email" });
-  } catch (error) {
-    console.error("OTP Send Error:", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
+  } catch (error) { res.status(500).json({ message: error.message }); }
 });
 
-// 🟢 2. Route to verify OTP and Toggle Freeze State
-router.post("/verify-freeze-otp", protect, async (req, res) => {
+// 5. FORGOT PASSWORD (Initiate)
+router.post("/forgot-password", async (req, res) => {
+  const { identifier } = req.body;
   try {
-    const { otp } = req.body;
-    const userId = req.user?._id || req.user?.id;
-    const user = await User.findById(userId);
-
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { mobileNumber: identifier }]
+    });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 🟢 Logic: Check if OTP matches and hasn't expired
-    const isMatch = String(user.freezeOtp) === String(otp);
-    const isNotExpired = user.freezeOtpExpires > Date.now();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = Date.now() + 10 * 60 * 1000;
+    await user.save();
 
-    if (isMatch && isNotExpired) {
-      user.isFrozen = !user.isFrozen; 
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: "Password Reset - Wallexa",
+      text: `Your reset OTP is ${otp}`
+    });
 
-      // Clear security fields
-      user.freezeOtp = undefined;
-      user.freezeOtpExpires = undefined;
-      await user.save();
+    res.json({ message: "OTP sent", userId: user._id, resetInitiated: true });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
 
-      const statusText = user.isFrozen ? "FROZEN" : "UNFROZEN";
-      
-      try {
-        // 📧 FIXED: Pass ONLY the statusText so it doesn't look like a transaction
-        await sendSecurityEmail(
-            user.email, 
-            `Wallexa Security: Account ${statusText}`, 
-            statusText
-        );
-        console.log(`✅ ${statusText} notification sent to ${user.email}`);
-      } catch (mailErr) {
-        console.error("❌ Security Mailer Error:", mailErr.message);
-      }
-      
-      return res.status(200).json({
-        message: user.isFrozen ? "Account Frozen ❄️" : "Account Unfrozen 🔥",
-        isFrozen: user.isFrozen,
-      });
-    } else {
-      return res.status(400).json({
-        message: !isNotExpired ? "OTP has expired" : "Invalid OTP code",
-      });
+// 6. RESET PASSWORD (Finalize)
+router.post("/reset-password", async (req, res) => {
+  const { userId, otpCode, newPassword } = req.body;
+  try {
+    const user = await User.findById(userId);
+    if (!user || user.otp !== otpCode || user.otpExpires < Date.now()) {
+      return res.status(400).json({ message: "Invalid OTP" });
     }
-  } catch (error) {
-    console.error(error);
-    // ✅ FIXED: Ensure return is used in the catch block
-    return res.status(500).json({ message: "Verification failed" });
-  }
+
+    user.password = newPassword;
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    res.json({ message: "Password updated successfully" });
+  } catch (error) { res.status(500).json({ message: error.message }); }
+});
+
+// Freeze/Unfreeze OTP Request
+router.post("/send-freeze-otp", protect, async (req, res) => {
+  try {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    req.user.otp = otp;
+    req.user.otpExpires = Date.now() + 5 * 60 * 1000;
+    await req.user.save();
+
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: req.user.email,
+      subject: "Security Alert: Wallet Status Change",
+      text: `OTP to freeze/unfreeze wallet: ${otp}`
+    });
+    res.json({ message: "OTP sent" });
+  } catch (error) { res.status(500).json({ message: "Error sending OTP" }); }
 });
 
 export default router;

@@ -1,20 +1,5 @@
-/* Global.css */
-:root {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --white: #ffffff;
-  --text-main: #1f2937;
-  --text-muted: #6b7280;
-  --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --radius: 16px;
-}
-
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'Inter', sans-serif;
-  background: var(--bg-gradient);
-  min-height: 100vh;
-  /* 🟢 Centering removed from here to allow dashboard flexibility */
-  padding: 20px;
-}
+/* 
+  Legacy file. 
+  Global styles have been moved to frontent/src/index.css to implement the new Dark Fintech Theme.
+  This file is kept to prevent import errors in existing components.
+*/

@@ -1,123 +1,128 @@
-/* Signup.css */
-.signup-card {
-  /* 🟢 FIXED: Use solid white so it doesn't mix with the purple background */
-  background: #ffffff; 
-  
-  /* 🟢 ADDED: Deeper shadow to make the card "pop" off the screen */
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-  
-  /* 🟢 ADDED: Subtle border for better definition on mobile */
-  border: 1px solid rgba(0, 0, 0, 0.05);
+/* Signup.css - Matches Signin Theme */
 
-  padding: 45px 35px;
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 650px;
-  text-align: center;
-  transition: transform 0.3s ease;
+.signup-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  background: radial-gradient(circle at bottom left, #1e1b4b, var(--bg-app));
 }
 
-.main-heading { font-size: 2.2rem; color: var(--text-main); font-weight: 800; letter-spacing: -0.5px; }
-.sub-heading { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 35px; }
-.section-title { font-size: 1.1rem; color: var(--text-main); margin-bottom: 25px; opacity: 0.8; }
+.signup-card {
+  background: var(--bg-card);
+  padding: 40px;
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  width: 100%;
+  max-width: 550px;
+  text-align: center;
+  position: relative;
+  /* remove internal animation if framer-motion handles it, but keeping safe */
+}
 
+.signup-card .title {
+  margin-bottom: 5px;
+  font-size: 1.8rem;
+}
+
+.signup-card .subtitle {
+  margin-bottom: 25px;
+}
+
+.section-title {
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 20px;
+  text-align: left;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* --- Layout Utilities for local component usage --- */
 .flex-row {
   display: flex;
   gap: 15px;
   margin-bottom: 15px;
 }
 
-.input-field {
-  width: 100%;
-  padding: 14px 16px;
-  border: 1.5px solid #e5e7eb;
-  border-radius: 12px;
-  font-size: 1rem;
-  transition: all 0.2s ease;
-  background: #f9fafb; /* Light gray to make inputs look distinct */
+.flex-row .input-field {
+  margin-bottom: 0;
+  flex: 1;
 }
 
-.input-field:focus {
-  outline: none;
-  border-color: var(--primary);
-  background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
-}
-
-.input-wrapper { flex: 1; text-align: left; }
-.input-label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; margin-left: 4px; }
-
-.primary-button {
-  width: 100%;
-  padding: 15px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 15px;
-  box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
-}
-
-.primary-button:hover { background: #4338ca; transform: translateY(-2px); }
-
-.secondary-button {
-  background: white;
-  color: var(--primary);
-  border: 1.5px solid var(--primary);
-  padding: 10px 25px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 10px;
-}
-
-/* Mobile Responsiveness */
-@media (max-width: 600px) {
-  .flex-row { flex-direction: column; gap: 0; }
-  .signup-card { padding: 30px 20px; border-radius: 15px; }
-}
-
-/* Signin.css & Signup.css */
-.signin-container, .signup-container {
+/* For specific wrappers like Date/Nationality */
+.input-wrapper {
+  flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 90vh; /* 🟢 Centers the card within the page */
+  flex-direction: column;
+  text-align: left;
 }
 
-.auth-card {
-  background: var(--white);
-  padding: 40px;
-  border-radius: var(--radius);
-  width: 100%;
-  max-width: 450px; /* 🟢 Prevents the infinite stretch */
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-}
-.underage-tooltip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  margin-top: 5px;
-  position: absolute; /* Floating effect like your screenshot */
-  z-index: 10;
-}
-
-.underage-tooltip p {
-  color: #1f2937;
+.input-label {
+  margin-left: 2px;
+  margin-bottom: 6px;
   font-size: 0.85rem;
-  font-weight: 500;
-  margin: 0;
+  color: var(--text-muted);
 }
 
-.warning-icon {
-  color: #f59e0b; /* Matches the orange warning icon in image_0829ef.png */
+.select-field {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 15px top 50%;
+  background-size: 10px auto;
+}
+
+.footer-section {
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.footer-text {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+/* Additions for progress steps */
+
+.progress-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 30px;
+  justify-content: center;
+}
+
+.progress-step {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  transition: background 0.3s;
+}
+
+.progress-step.active {
+  background: var(--primary);
+}
+
+.strength-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 5px;
+  height: 4px;
+}
+
+.seg {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  transition: background 0.3s;
+}
+
+.seg.filled {
+  background: var(--success);
 }

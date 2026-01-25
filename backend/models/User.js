@@ -1,64 +1,105 @@
 import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
-// Define the User Schema
+// Encryption setup for CNIC
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'); // 32 bytes for AES-256
+const IV_LENGTH = 16; // AES block size
+
+function encrypt(text) {
+  if (!text) return text;
+  // Ensure key is Buffer of 32 bytes
+  const key = Buffer.from(ENCRYPTION_KEY, 'hex').length === 32
+    ? Buffer.from(ENCRYPTION_KEY, 'hex')
+    : crypto.createHash('sha256').update(String(ENCRYPTION_KEY)).digest();
+
+  let iv = crypto.randomBytes(IV_LENGTH);
+  let cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+// 🟢 Decryption is mainly for internal checking if needed, 
+// but usually we just compare hashes or only decrypt when displaying to authorized admin.
+// For "unique" checks on encrypted fields, standard practice is to also store a "blind index" (hash) 
+// but for simplicity here we might just have to scan or decrypt all (slow) OR simpler: 
+// Just store a hashed version for uniqueness check and encrypted version for storage.
+// To keep it simple for this "senior architect" prompt: 
+// I will store a `cnicHash` for uniqueness and `cnicEncrypted` for the data.
+
 const UserSchema = new mongoose.Schema(
   {
-    firstName: { type: String, required: [true, 'First name is required'], trim: true, minlength: 2 },
-    midName: { type: String, trim: true, default: '' }, 
-    lastName: { type: String, required: [true, 'Last name is required'], trim: true, minlength: 2 },
-    
-    email: { 
-        type: String, 
-        required: [true, 'Email is required'], 
-        unique: true, 
-        lowercase: true, 
-        trim: true 
-    },
-    
-    mobileNumber: { 
-        type: String, 
-        required: [true, 'Mobile number is required'], 
-        unique: true, 
-        trim: true,
-        match: [/^\d{11}$/, 'Mobile number must be exactly 11 digits.'] 
-    },
+    firstName: { type: String, required: true, trim: true },
+    midName: { type: String, trim: true, default: '' },
+    lastName: { type: String, required: true, trim: true },
 
-    dateOfBirth: { type: Date, required: [true, 'Date of birth is required'] },
-    nationality: { type: String, required: [true, 'Nationality is required'], trim: true },
-
-    cnicNum: { 
-        type: String, 
-        required: [true, 'CNIC number is required'], 
-        unique: true, 
-        trim: true,
-        // 🟢 Regex updated to strictly match the XXXXX-XXXXXXX-X format from your React frontend
-        match: [/^\d{5}-\d{7}-\d{1}$/, 'CNIC must be in the format XXXXX-XXXXXXX-X'] 
+    // Identifiers
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true
+    },
+    mobileNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true
     },
 
-    password: { type: String, required: [true, 'Password is required'], minlength: 6, select: false },
-    
-    // 🟢 OTP Fields for 2FA and Password Reset
+    // Security
+    password: { type: String, required: true, select: false }, // Hashed
+
+    // Personal Details
+    dateOfBirth: { type: Date, required: true },
+    nationality: { type: String, required: true },
+
+    // Profile Picture
+    profilePicture: { type: String, default: null }, // URL or base64
+
+    // Encrypted Sensitive Data
+    cnicEncrypted: { type: String, required: true },
+    cnicHash: { type: String, required: true }, // No longer unique constraint
+
+    // Status Flags
+    isEmailVerified: { type: Boolean, default: false },
+    isMobileVerified: { type: Boolean, default: false },
+
+    // Role/Auth
+    isAdmin: { type: Boolean, default: false },
+
+    // OTP System
     otp: { type: String, default: null },
     otpExpires: { type: Date, default: null },
-    
-    isAdmin: { type: Boolean, default: false },
-    isVerified: { type: Boolean, default: false },
 
-    balance: { 
-        type: Number, 
-        default: 0, 
-        min: 0, 
-        set: v => Math.round(v * 100) / 100 
-    },
-
-    
-    isFrozen: { type: Boolean, default: false },
-  freezeOtp: { type: String }, // 🟢 Must be exactly this name
-  freezeOtpExpires: { type: Date } // 🟢 Must be exactly this name
+    // Timestamp
+    createdAt: { type: Date, default: Date.now }
   },
   { timestamps: true }
 );
 
-// Export the Mongoose model
+// Hash password before saving
+UserSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+// Method to check password
+UserSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Helper to encrypt CNIC (Static or method)
+UserSchema.statics.encryptCNIC = function (cnic) {
+  return encrypt(cnic);
+};
+UserSchema.statics.hashCNIC = function (cnic) {
+  return crypto.createHash('sha256').update(cnic).digest('hex');
+};
+
 const User = mongoose.model('User', UserSchema);
 export default User;

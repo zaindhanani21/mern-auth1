@@ -1,254 +1,185 @@
-import React, { useState } from "react";
-import "./Css/Wallexa.css"; // The Global Theme
-import "./Css/Signup.css"; // The Specific Signup Layout
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import './Css/Signup.css';
 
-export default function Signup({ onSwitchToSignin, onSignupSuccess }) {
-  const [firstName, setFirstName] = useState("");
-  const [midName, setMidName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [mobileNumber, setMobileNumber] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
-  const [nationality, setNationality] = useState("");
-  const [cnicNum, setCnicNum] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [ageError, setAgeError] = useState("");
+// 🟢 Multi-Step Signup Component
+export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState({
+    firstName: '', midName: '', lastName: '',
+    mobileNumber: '', email: '',
+    dateOfBirth: '', nationality: '', cnicNum: '',
+    password: '', confirmPassword: ''
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const nationalities = ["Pakistan"];
+  // Constants
+  const nationalities = ["Pakistan", "United Arab Emirates", "Saudi Arabia", "United Kingdom", "USA"];
 
-  const getEighteenYearsAgoDate = () => {
-    const date = new Date();
-    date.setFullYear(date.getFullYear() - 18);
-    return date.toISOString().split("T")[0]; // Returns YYYY-MM-DD
+  // Logic
+  const updateField = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError('');
   };
 
-  // --- 🟢 NAME VALIDATION HELPER ---
-  // This removes any characters that are NOT letters or spaces
-  const handleNameInput = (value, setter) => {
-    const cleanedName = value.replace(/[^a-zA-Z\s]/g, "");
-    setter(cleanedName);
+  const getPasswordStrength = () => {
+    const p = formData.password;
+    if (!p) return 0;
+    let s = 0;
+    if (p.length > 7) s++;
+    if (/[A-Z]/.test(p)) s++;
+    if (/[0-9]/.test(p)) s++;
+    if (/[^A-Za-z0-9]/.test(p)) s++;
+    return s; // 0 to 4
   };
+
+  const nextStep = () => {
+    // Basic validations per step
+    if (step === 1) {
+      if (!formData.firstName || !formData.lastName) return setError("Name fields are required.");
+    }
+    if (step === 2) {
+      if (!formData.dateOfBirth || !formData.nationality || !formData.cnicNum) return setError("Personal details required.");
+      // Masking check for CNIC
+      if (!/^\d{5}-\d{7}-\d{1}$/.test(formData.cnicNum)) return setError("CNIC format: 12345-1234567-1");
+    }
+    if (step === 3) {
+      if (!formData.email || !formData.mobileNumber) return setError("Contact info required.");
+    }
+    setStep(step + 1);
+  };
+
+  const prevStep = () => setStep(step - 1);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
-    setAgeError("");
+    if (formData.password !== formData.confirmPassword) return setError("Passwords do not match.");
+    if (getPasswordStrength() < 3) return setError("Password is too weak.");
 
-    const birthDate = new Date(dateOfBirth);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birthDate.getDate())
-    ) {
-      age--;
-    }
-
-    if (age < 18) {
-      // 🟢 This sets the state, but we must make sure it's visible in the UI below
-      return setMessage(
-        "Registration failed: You must be at least 18 years old to join Wallexa.",
-      );
-    }
-
-    // --- 🟢 EMAIL VALIDATION CHECK ---
-    // Ensures the "@" character is present before attempting the fetch
-    if (!email.includes("@")) {
-      return setMessage("Please enter a valid email address containing '@'.");
-    }
-
-    const userData = {
-      firstName,
-      midName,
-      lastName,
-      email,
-      mobileNumber,
-      dateOfBirth,
-      nationality,
-      cnicNum,
-      password,
-    };
-
+    setLoading(true);
     try {
       const res = await fetch("http://localhost:5000/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
+        body: JSON.stringify(formData)
       });
-
       const data = await res.json();
-
       if (res.ok) {
         onSignupSuccess(data);
-        setMessage("Verification initiated. Please check your email inbox.");
       } else {
-        setMessage(data.message || "Signup failed. Please try again.");
+        setError(data.message || "Signup failed");
       }
-    } catch (err) {
-      setMessage("Network error! Could not connect to backend.");
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // UI Renderers
   return (
     <div className="signup-container">
-      <div className="signup-card">
-        <h1 className="main-heading">Wallexa Sign Up</h1>
-        <p className="sub-heading">Secure • Fast • Smart Payments</p>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="signup-card"
+      >
+        <div className="progress-bar">
+          {[1, 2, 3, 4].map(s => (
+            <div key={s} className={`progress-step ${step >= s ? 'active' : ''}`}></div>
+          ))}
+        </div>
 
-        <h2 className="section-title">Create Your Account</h2>
+        <h1 className="title">Create Account</h1>
+        <p className="subtitle">Step {step} of 4</p>
 
         <form onSubmit={handleSubmit}>
-          {/* 1. Name Fields - Restricted to letters only */}
-          <div className="flex-row">
-            <input
-              className="input-field"
-              type="text"
-              placeholder="First Name"
-              value={firstName}
-              onChange={(e) => handleNameInput(e.target.value, setFirstName)}
-              required
-            />
-            <input
-              className="input-field"
-              type="text"
-              placeholder="Middle Name (Optional)"
-              value={midName}
-              onChange={(e) => handleNameInput(e.target.value, setMidName)}
-            />
-            <input
-              className="input-field"
-              type="text"
-              placeholder="Last Name"
-              value={lastName}
-              onChange={(e) => handleNameInput(e.target.value, setLastName)}
-              required
-            />
-          </div>
-
-          {/* 2. Email & Mobile Number */}
-          <div className="flex-row">
-            <input
-              className="input-field"
-              type="email"
-              placeholder="Email Address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <input
-              className="input-field"
-              type="tel"
-              placeholder="Mobile (11 digits)"
-              value={mobileNumber}
-              onChange={(e) => {
-                const value = e.target.value;
-                const cleanedValue = value.replace(/[^0-9]/g, "").slice(0, 11);
-                setMobileNumber(cleanedValue);
-              }}
-              required
-            />
-          </div>
-
-          {/* 3. Date of Birth & Nationality */}
-          <div className="flex-row">
-            <div className="input-wrapper">
-              <label className="input-label">Date of Birth:</label>
-              <input
-                className="input-field"
-                type="date"
-                value={dateOfBirth}
-                onChange={(e) => setDateOfBirth(e.target.value)}
-                required
-              />
-            
-            </div>
-
-            <div className="input-wrapper">
-              <label className="input-label">Nationality:</label>
-              <select
-                className="input-field select-field"
-                value={nationality}
-                onChange={(e) => setNationality(e.target.value)}
-                required
+          <AnimatePresence mode="wait">
+            {step === 1 && (
+              <motion.div
+                key="step1"
+                initial={{ x: 20, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -20, opacity: 0 }}
               >
-                <option value="" disabled>
-                  Select your Nationality
-                </option>
-                {nationalities.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+                <h3 className="section-title">Who are you?</h3>
+                <div className="flex-row">
+                  <input className="input-field" name="firstName" placeholder="First Name" value={formData.firstName} onChange={updateField} />
+                  <input className="input-field" name="lastName" placeholder="Last Name" value={formData.lastName} onChange={updateField} />
+                </div>
+                <input className="input-field" name="midName" placeholder="Middle Name (Optional)" value={formData.midName} onChange={updateField} />
 
-          {/* 4. CNIC Number & Password */}
-          <div className="flex-row">
-            <input
-              className="input-field"
-              type="text"
-              placeholder="CNIC (e.g., XXXXX-XXXXXXX-X)"
-              value={cnicNum}
-              onChange={(e) => {
-                const value = e.target.value;
-                let cleanedValue = value.replace(/[^0-9]/g, "");
+                <button type="button" className="primary-button" onClick={nextStep}>Next: Personal Details →</button>
+              </motion.div>
+            )}
 
-                if (cleanedValue.length > 5) {
-                  cleanedValue =
-                    cleanedValue.slice(0, 5) + "-" + cleanedValue.slice(5);
-                }
-                if (cleanedValue.length > 13) {
-                  cleanedValue =
-                    cleanedValue.slice(0, 13) + "-" + cleanedValue.slice(13);
-                }
+            {step === 2 && (
+              <motion.div
+                key="step2" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }}
+              >
+                <h3 className="section-title">Personal Details</h3>
+                <input className="input-field" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={updateField} />
 
-                if (cleanedValue.length <= 15) {
-                  setCnicNum(cleanedValue);
-                }
-              }}
-              required
-            />
-            <input
-              className="input-field"
-              type="password"
-              placeholder="Create Password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value); // 🟢 This allows rewriting
-                if (message.includes("password")) setMessage(""); // 🟢 Clears error while typing
-              }}
-              required
-            />
-          </div>
+                <select className="input-field select-field" name="nationality" value={formData.nationality} onChange={updateField}>
+                  <option value="">Select Nationality</option>
+                  {nationalities.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
 
-          <button type="submit" className="primary-button">
-            Register
-          </button>
-        </form>
+                <input className="input-field" name="cnicNum" placeholder="CNIC (xxxxx-xxxxxxx-x)" value={formData.cnicNum} onChange={updateField} maxLength={15} />
 
-        {message && (
-          <p
-            className={`status-message ${message.includes("Verification initiated") ? "success" : "error"}`}
-          >
-            {message}
+                <div className="flex-row">
+                  <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
+                  <button type="button" className="primary-button" onClick={nextStep}>Next: Contact →</button>
+                </div>
+              </motion.div>
+            )}
+
+            {step === 3 && (
+              <motion.div
+                key="step3" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }}
+              >
+                <h3 className="section-title">Contact Info</h3>
+                <input className="input-field" name="email" type="email" placeholder="Email Address" value={formData.email} onChange={updateField} />
+                <input className="input-field" name="mobileNumber" placeholder="Mobile (e.g., 03001234567)" value={formData.mobileNumber} onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value.replace(/\D/g, '').slice(0, 11) })} />
+
+                <div className="flex-row">
+                  <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
+                  <button type="button" className="primary-button" onClick={nextStep}>Next: Security →</button>
+                </div>
+              </motion.div>
+            )}
+
+            {step === 4 && (
+              <motion.div
+                key="step4" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }}
+              >
+                <h3 className="section-title">Secure Your Account</h3>
+                <input className="input-field" name="password" type="password" placeholder="Password" value={formData.password} onChange={updateField} />
+
+                {/* Strength Indicator */}
+                <div className="strength-bar">
+                  {[1, 2, 3, 4].map(i => <div key={i} className={`seg ${getPasswordStrength() >= i ? 'filled' : ''}`}></div>)}
+                </div>
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'left', marginBottom: '15px' }}>Must contain uppercase, number, and special char.</p>
+
+                <input className="input-field" name="confirmPassword" type="password" placeholder="Confirm Password" value={formData.confirmPassword} onChange={updateField} />
+
+                <div className="flex-row">
+                  <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
+                  <button type="submit" className="primary-button" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {error && <p className="status-message error">{error}</p>}
+
+          <p className="footer-text" style={{ marginTop: '20px', cursor: 'pointer', color: '#6366f1' }} onClick={onSwitchToSignin}>
+            Already have an account? Sign In
           </p>
-        )}
-
-        <div className="footer-section">
-          <p className="footer-text">Already have an account?</p>
-          <button
-            type="button"
-            onClick={onSwitchToSignin}
-            className="secondary-button"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
+        </form>
+      </motion.div>
     </div>
   );
 }

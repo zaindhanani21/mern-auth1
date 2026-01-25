@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import Signup from "./components/SignUp"; 
+import Signup from "./components/SignUp";
 import Signin from "./components/SignIn";
 import Dashboard from "./components/Dashboard";
-import VerifyOtp from "./components/VerifyOtp"; 
+import VerifyOtp from "./components/VerifyOtp";
+import LandingPage from "./components/LandingPage";
 
 // 🟢 Simplified page states (ADMIN removed)
 const PAGES = {
+    LANDING: "landing",
     SIGNIN: "signin",
     SIGNUP: "signup",
     DASHBOARD: "dashboard",
@@ -14,20 +16,20 @@ const PAGES = {
 };
 
 function App() {
-    const [currentPage, setCurrentPage] = useState(PAGES.SIGNIN);
-    const [userData, setUserData] = useState(null); 
-    const [pendingVerification, setPendingVerification] = useState(null); 
-    const [pendingSignupVerification, setPendingSignupVerification] = useState(null); 
-    const [globalMessage, setGlobalMessage] = useState(null); 
+    const [currentPage, setCurrentPage] = useState(PAGES.LANDING);
+    const [userData, setUserData] = useState(null);
+    const [pendingVerification, setPendingVerification] = useState(null);
+    const [pendingSignupVerification, setPendingSignupVerification] = useState(null);
+    const [globalMessage, setGlobalMessage] = useState(null);
 
     // 🟢 Simplified Sign-in Handler
     const handleSigninResponse = (data) => {
         setGlobalMessage(null);
 
         if (data.requiresOTP) {
-            setPendingVerification({ 
-                userId: data.userId, 
-                email: data.email 
+            setPendingVerification({
+                userId: data.userId,
+                email: data.email
             });
             setCurrentPage(PAGES.VERIFY_OTP);
         } else {
@@ -37,16 +39,16 @@ function App() {
             setCurrentPage(PAGES.DASHBOARD);
         }
     };
-    
+
     const handleSignupResponse = (data) => {
-        setGlobalMessage(null); 
+        setGlobalMessage(null);
         if (data.signupVerificationRequired) {
             setPendingSignupVerification({
                 userId: data.userId,
                 email: data.email,
-                isSignup: true 
+                isSignup: true
             });
-            setCurrentPage(PAGES.VERIFY_SIGNUP); 
+            setCurrentPage(PAGES.VERIFY_SIGNUP);
         }
     };
 
@@ -54,7 +56,7 @@ function App() {
         setUserData(null);
         setPendingVerification(null);
         setPendingSignupVerification(null);
-        setGlobalMessage(null); 
+        setGlobalMessage(null);
         setCurrentPage(PAGES.SIGNIN);
     };
 
@@ -66,23 +68,32 @@ function App() {
                     {globalMessage.text}
                 </div>
             )}
-            
+
+            {currentPage === PAGES.LANDING && (
+                <LandingPage
+                    onNavigate={(page) => {
+                        setGlobalMessage(null);
+                        setCurrentPage(page);
+                    }}
+                />
+            )}
+
             {currentPage === PAGES.SIGNIN && (
                 <Signin
                     onSwitchToSignup={() => {
                         setGlobalMessage(null);
                         setCurrentPage(PAGES.SIGNUP);
                     }}
-                    onSigninSuccess={handleSigninResponse} 
+                    onSigninSuccess={handleSigninResponse}
                 />
             )}
 
             {currentPage === PAGES.SIGNUP && (
-                <Signup 
+                <Signup
                     onSwitchToSignin={() => {
                         setGlobalMessage(null);
                         setCurrentPage(PAGES.SIGNIN);
-                    }} 
+                    }}
                     onSignupSuccess={handleSignupResponse}
                 />
             )}
@@ -90,12 +101,12 @@ function App() {
             {/* Existing Login 2FA Route */}
             {currentPage === PAGES.VERIFY_OTP && (
                 <VerifyOtp
-                    pendingData={pendingVerification} 
-                    onVerificationSuccess={handleSigninResponse} 
+                    pendingData={pendingVerification}
+                    onVerificationSuccess={handleSigninResponse}
                     onCancel={() => {
                         setGlobalMessage(null);
                         setCurrentPage(PAGES.SIGNIN);
-                    }} 
+                    }}
                 />
             )}
 
@@ -103,25 +114,26 @@ function App() {
             {currentPage === PAGES.VERIFY_SIGNUP && (
                 <VerifyOtp
                     pendingData={pendingSignupVerification}
-                    isSignupFlow={true} 
+                    isSignupFlow={true}
                     onVerificationSuccess={(data) => {
-                        setGlobalMessage({ text: data.message }); 
+                        // User is now verified and has a token - go to dashboard
+                        setUserData(data);
                         setPendingSignupVerification(null);
-                        setCurrentPage(PAGES.SIGNIN); 
-                    }} 
+                        setCurrentPage(PAGES.DASHBOARD);
+                    }}
                     onCancel={() => {
                         setGlobalMessage(null);
                         setCurrentPage(PAGES.SIGNIN);
-                    }} 
+                    }}
                 />
             )}
 
             {/* USER DASHBOARD ROUTE */}
             {currentPage === PAGES.DASHBOARD && (
-                <Dashboard 
-                    userData={userData} 
-                    onLogout={handleLogout} 
-                    // 🟢 Removed Admin Navigation handler
+                <Dashboard
+                    userData={userData}
+                    onLogout={handleLogout}
+                // 🟢 Removed Admin Navigation handler
                 />
             )}
         </div>
