@@ -15,7 +15,7 @@ const TransactionSchema = new mongoose.Schema(
         amount: { type: Number, required: true },
         type: {
             type: String,
-            enum: ['SEND', 'RECEIVE', 'ADD_MONEY'],
+            enum: ['SEND', 'RECEIVE', 'ADD_MONEY', 'BILL_PAYMENT', 'SPLIT_PAYMENT'],
             required: true
         },
         description: { type: String },

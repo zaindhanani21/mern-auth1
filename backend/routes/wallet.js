@@ -6,6 +6,7 @@ import User from "../models/User.js";
 import Transaction from "../models/Transaction.js";
 import Notification from "../models/Notification.js";
 import ExternalBank from "../models/ExternalBank.js";
+import SplitRequest from "../models/SplitRequest.js";
 import { sendMoneyReceivedEmail, sendMoneySentEmail, sendFundsAddedEmail } from "../mailHelper.js";
 
 const router = express.Router();
@@ -244,6 +245,168 @@ router.post("/mark-notification-read", protect, async (req, res) => {
         res.json({ message: "Notification marked as read", notification });
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+// 7. PAY BILL
+router.post("/pay-bill", protect, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const { provider, consumerNumber, amount, type } = req.body;
+        if (amount <= 0) throw new Error("Invalid amount");
+
+        const wallet = await Wallet.findOne({ userId: req.user._id }).session(session);
+        if (!wallet) throw new Error("Wallet not found");
+        if (wallet.status === 'FROZEN') throw new Error("Your wallet is Frozen");
+        if (wallet.balance < amount) throw new Error("Insufficient Balance");
+
+        // Deduct from wallet
+        wallet.balance -= Number(amount);
+        await wallet.save({ session });
+
+        const tx = new Transaction({
+            senderWallet: wallet._id,
+            receiverWallet: wallet._id, // System
+            amount,
+            type: 'BILL_PAYMENT',
+            description: `Paid ${provider} (${type}) for A/C ${consumerNumber}`
+        });
+        await tx.save({ session });
+
+        await session.commitTransaction();
+
+        // Notify
+        notifyUser(req.user._id, "Bill Paid", `Successfully paid PKR ${amount} for ${provider} bill.`, "TRANSACTION", req.io);
+
+        res.json({ message: "Bill Payment Successful", newBalance: wallet.balance });
+    } catch (error) {
+        await session.abortTransaction();
+        res.status(400).json({ message: error.message });
+    } finally {
+        session.endSession();
+    }
+});
+
+// 8. REQUEST BILL SPLIT
+router.post("/request-split", protect, async (req, res) => {
+    try {
+        const { description, totalAmount, friends } = req.body;
+        if (totalAmount <= 0) throw new Error("Invalid total amount");
+        if (!friends || friends.length === 0) throw new Error("No friends selected for splitting.");
+
+        let participants = [];
+        for (let f of friends) {
+            const user = await User.findOne({ mobileNumber: f.mobileNumber });
+            if (!user) throw new Error(`User with mobile ${f.mobileNumber} not found.`);
+            if (user._id.equals(req.user._id)) continue; // skip self
+            participants.push({ userId: user._id, amount: f.amount, status: 'PENDING' });
+        }
+
+        if (participants.length === 0) throw new Error("No valid friends added.");
+
+        const splitRequest = new SplitRequest({
+            initiator: req.user._id,
+            description,
+            totalAmount,
+            participants
+        });
+        await splitRequest.save();
+
+        // Notify participants
+        for (let p of participants) {
+            notifyUser(p.userId, "Bill Split Request", `${req.user.firstName} requested PKR ${p.amount} for ${description}`, "SPLIT_REQUEST", req.io);
+        }
+
+        res.json({ message: "Split Request Sent", splitRequest });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
+    }
+});
+
+// 9. GET SPLIT REQUESTS
+router.get("/get-splits", protect, async (req, res) => {
+    try {
+        // Find requests where the user is a participant OR the initiator
+        const requests = await SplitRequest.find({
+            $or: [
+                { 'participants.userId': req.user._id },
+                { initiator: req.user._id }
+            ]
+        }).populate('initiator', 'firstName lastName mobileNumber')
+          .populate('participants.userId', 'firstName lastName mobileNumber')
+          .sort({ createdAt: -1 });
+
+        res.json({ requests });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// 10. ACCEPT SPLIT REQUEST
+router.post("/accept-split", protect, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const { splitId } = req.body;
+
+        const split = await SplitRequest.findById(splitId).session(session);
+        if (!split) throw new Error("Split request not found");
+
+        const participantIndex = split.participants.findIndex(p => p.userId.equals(req.user._id));
+        if (participantIndex === -1) throw new Error("You are not part of this split request");
+        
+        const participant = split.participants[participantIndex];
+        if (participant.status === 'ACCEPTED') throw new Error("You have already paid this split");
+
+        const amount = participant.amount;
+
+        const senderWallet = await Wallet.findOne({ userId: req.user._id }).session(session);
+        if (senderWallet.status === 'FROZEN') throw new Error("Your wallet is Frozen");
+        if (senderWallet.balance < amount) throw new Error("Insufficient Balance");
+
+        const receiverWallet = await Wallet.findOne({ userId: split.initiator }).session(session);
+
+        // Deduct/Add
+        senderWallet.balance -= Number(amount);
+        receiverWallet.balance += Number(amount);
+
+        await senderWallet.save({ session });
+        await receiverWallet.save({ session });
+
+        // Update participant status
+        split.participants[participantIndex].status = 'ACCEPTED';
+
+        // Check if all paid
+        const allPaid = split.participants.every(p => p.status === 'ACCEPTED');
+        if (allPaid) {
+            split.status = 'COMPLETED';
+        } else {
+            split.status = 'PARTIALLY_PAID';
+        }
+        await split.save({ session });
+
+        // Record Transaction
+        const tx = new Transaction({
+            senderWallet: senderWallet._id,
+            receiverWallet: receiverWallet._id,
+            amount,
+            type: 'SPLIT_PAYMENT',
+            description: `Split Paid: ${split.description}`
+        });
+        await tx.save({ session });
+
+        await session.commitTransaction();
+
+        // Notify Initiator
+        notifyUser(split.initiator, "Split Paid", `${req.user.firstName} paid their share (PKR ${amount}) for ${split.description}`, "TRANSACTION", req.io);
+
+        res.json({ message: "Split Paid Successfully" });
+    } catch (error) {
+        await session.abortTransaction();
+        res.status(400).json({ message: error.message });
+    } finally {
+        session.endSession();
     }
 });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { io } from "socket.io-client";
 import { QRCodeSVG } from 'qrcode.react';
-import { Home, Send, PlusCircle, History, Shield, LogOut, Bell, Menu, User, X, Clock, Check } from 'lucide-react';
+import { Home, Send, PlusCircle, History, Shield, LogOut, Bell, Menu, User, X, Clock, Check, Receipt, QrCode, Users } from 'lucide-react';
 import "./Css/ModernDashboard.css";
 
 const SOCKET_URL = "http://localhost:5000";
@@ -43,6 +43,11 @@ export default function Dashboard({ userData, onLogout }) {
   const [addForm, setAddForm] = useState({ amount: '', method: 'card', cardNumber: '', expiry: '', cvc: '' });
   const [otp, setOtp] = useState("");
   const [showOtpModal, setShowOtpModal] = useState(false);
+
+  // New Features State
+  const [billForm, setBillForm] = useState({ provider: 'K-Electric', consumerNumber: '', amount: '', type: 'Electricity' });
+  const [splitForm, setSplitForm] = useState({ description: '', totalAmount: '', friends: [{ mobileNumber: '', amount: '' }] });
+  const [splits, setSplits] = useState([]);
 
   // --- INITIALIZATION ---
   const getToken = () => localStorage.getItem("userToken");
@@ -94,10 +99,24 @@ export default function Dashboard({ userData, onLogout }) {
     } catch (e) { console.error(e); }
   }, []);
 
+  const fetchSplits = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/get-splits", {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSplits(data.requests || []);
+      }
+    } catch (e) { console.error(e); }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchNotifications();
     fetchProfile();
+    fetchSplits();
 
     const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
@@ -112,6 +131,7 @@ export default function Dashboard({ userData, onLogout }) {
       setToast({ title: notif.title, msg: notif.message, type: 'info' });
       setTimeout(() => setToast(null), 5000);
       fetchData();
+      fetchSplits();
     });
 
     return () => newSocket.close();
@@ -257,6 +277,83 @@ export default function Dashboard({ userData, onLogout }) {
     reader.readAsDataURL(file);
   };
 
+  // --- NEW FEATURE ACTIONS ---
+  const handlePayBill = async (e) => {
+    e.preventDefault();
+    if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen", type: "error" });
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/pay-bill", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(billForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ title: "Success", msg: "Bill Paid Successfully!", type: "success" });
+        setBillForm({ provider: 'K-Electric', consumerNumber: '', amount: '', type: 'Electricity' });
+        fetchData();
+        fetchNotifications();
+      } else {
+        setToast({ title: "Failed", msg: data.message, type: "error" });
+      }
+    } catch { setToast({ title: "Error", msg: "Network error", type: "error" }); }
+    finally { setLoading(false); }
+  };
+
+  const handleFetchBillAmount = () => {
+     // Mock fetch bill
+     if (!billForm.consumerNumber) {
+        return setToast({ title: "Error", msg: "Enter consumer number first", type: "error" });
+     }
+     const mockAmount = Math.floor(Math.random() * 5000) + 500;
+     setBillForm(prev => ({...prev, amount: mockAmount.toString()}));
+     setToast({ title: "Info", msg: "Bill details fetched", type: "info" });
+  };
+
+  const handleRequestSplit = async (e) => {
+    e.preventDefault();
+    if (!splitForm.description || !splitForm.totalAmount) {
+       return setToast({ title: "Error", msg: "Enter description and total amount", type: "error" });
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/request-split", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify(splitForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ title: "Success", msg: "Split Request Sent!", type: "success" });
+        setSplitForm({ description: '', totalAmount: '', friends: [{ mobileNumber: '', amount: '' }] });
+        fetchSplits();
+      } else {
+        setToast({ title: "Failed", msg: data.message, type: "error" });
+      }
+    } catch { setToast({ title: "Error", msg: "Network error", type: "error" }); }
+    finally { setLoading(false); }
+  };
+
+  const handleAcceptSplit = async (splitId) => {
+    if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen", type: "error" });
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/wallet/accept-split", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ splitId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ title: "Success", msg: "Split Paid Successfully!", type: "success" });
+        fetchData();
+        fetchSplits();
+        fetchNotifications();
+      } else {
+        setToast({ title: "Failed", msg: data.message, type: "error" });
+      }
+    } catch { setToast({ title: "Error", msg: "Network error", type: "error" }); }
+    finally { setLoading(false); }
+  };
+
   // --- HELPER FUNCTIONS ---
   const formatTime = (dateString) => {
     const date = new Date(dateString);
@@ -362,14 +459,14 @@ export default function Dashboard({ userData, onLogout }) {
               {tx.type === 'ADD_MONEY' ? <PlusCircle size={20} /> : (tx.isSender ? <Send size={20} /> : <ArrowDownCircle size={20} />)}
             </div>
             <div className="tx-info">
-              <div className="tx-party" style={{ fontWeight: 600, color: '#1e293b' }}>{tx.otherPartyName}</div>
+              <div className="tx-party" style={{ fontWeight: 600, color: '#1e293b' }}>{tx.type === 'BILL_PAYMENT' ? tx.description : tx.otherPartyName}</div>
               <div className="tx-date" style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', color: '#64748b' }}>
                 <Clock size={14} /> {formatTime(tx.createdAt)}
               </div>
             </div>
             <div>
               <span className={`tx-amount ${tx.isSender ? 'debit' : 'credit'}`}>
-                {tx.isSender ? '-' : '+'} PKR {tx.amount.toLocaleString()}
+                {tx.isSender ? '-' : '+'} PKR {tx.amount?.toLocaleString()}
               </span>
               <span className="status-pill success">Success</span>
             </div>
@@ -378,6 +475,138 @@ export default function Dashboard({ userData, onLogout }) {
       </div>
     </div>
   );
+
+  const renderBills = () => (
+    <div className="view-container">
+      <h2 className="page-title">Pay Bills</h2>
+      <form className="mt-4" onSubmit={handlePayBill}>
+        <div className="form-group">
+          <label className="form-label">Service Type</label>
+          <select className="form-input" value={billForm.type} onChange={e => setBillForm({ ...billForm, type: e.target.value })} required disabled={isFrozen}>
+            <option value="Electricity">Electricity</option>
+            <option value="Gas">Gas</option>
+            <option value="Internet">Internet</option>
+            <option value="Mobile Package">Mobile Package</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Provider Name</label>
+          <input className="form-input" placeholder="e.g. K-Electric, SSGC, Jazz" value={billForm.provider} onChange={e => setBillForm({ ...billForm, provider: e.target.value })} required disabled={isFrozen} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Consumer / Account Number</label>
+          <input className="form-input" placeholder="Enter Consumer Number" value={billForm.consumerNumber} onChange={e => setBillForm({ ...billForm, consumerNumber: e.target.value })} required disabled={isFrozen} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Amount (PKR)</label>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <input className="form-input" type="number" placeholder="0.00" value={billForm.amount} onChange={e => setBillForm({ ...billForm, amount: e.target.value })} required disabled={isFrozen} readOnly />
+            <button type="button" className="secondary-button" onClick={handleFetchBillAmount} disabled={isFrozen}>
+              Fetch Bill
+            </button>
+          </div>
+        </div>
+        <button type="submit" className="primary-button" disabled={loading || isFrozen || !billForm.amount}>{loading ? 'Processing...' : 'Pay Bill'}</button>
+      </form>
+    </div>
+  );
+
+  const renderQR = () => (
+    <div className="view-container">
+      <h2 className="page-title">My QR Code</h2>
+      <div style={{ textAlign: "center", marginTop: "30px", background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+        <QRCodeSVG value={user.mobileNumber} size={250} />
+        <h3 style={{ marginTop: "20px", color: "#1e293b", fontSize: '1.5rem' }}>Scan to Pay Me</h3>
+        <p style={{ color: "#64748b", fontSize: '1.1rem' }}>Mobile: <strong>{user.mobileNumber}</strong></p>
+      </div>
+    </div>
+  );
+
+  const renderSplit = () => {
+    return (
+      <div className="view-container">
+        <h2 className="page-title">Bill Splitting</h2>
+
+        <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
+          <h3 style={{ marginBottom: '15px', color: '#1e293b' }}>Request a Split</h3>
+          <form onSubmit={handleRequestSplit}>
+            <div className="form-group">
+              <label className="form-label">Description (e.g. 5 Burgers)</label>
+              <input className="form-input" placeholder="What is this for?" value={splitForm.description} onChange={e => setSplitForm({ ...splitForm, description: e.target.value })} required disabled={isFrozen} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Total Amount</label>
+              <input className="form-input" type="number" placeholder="10000" value={splitForm.totalAmount} onChange={e => setSplitForm({ ...splitForm, totalAmount: e.target.value })} required disabled={isFrozen} />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Friends to split with</label>
+              {splitForm.friends.map((friend, index) => (
+                <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <input className="form-input" placeholder="Mobile Number" value={friend.mobileNumber} onChange={e => {
+                    const newFriends = [...splitForm.friends];
+                    newFriends[index].mobileNumber = e.target.value;
+                    setSplitForm({ ...splitForm, friends: newFriends });
+                  }} required disabled={isFrozen} />
+                  <input className="form-input" type="number" placeholder="Target per person" value={friend.amount} onChange={e => {
+                    const newFriends = [...splitForm.friends];
+                    newFriends[index].amount = e.target.value;
+                    setSplitForm({ ...splitForm, friends: newFriends });
+                  }} required disabled={isFrozen} />
+                  {index > 0 && (
+                    <button type="button" className="secondary-button" style={{ padding: '0 15px' }} onClick={() => {
+                      const newFriends = splitForm.friends.filter((_, i) => i !== index);
+                      setSplitForm({ ...splitForm, friends: newFriends });
+                    }}>X</button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="secondary-button" onClick={() => setSplitForm({ ...splitForm, friends: [...splitForm.friends, { mobileNumber: '', amount: '' }] })}>
+                + Add Friend
+              </button>
+            </div>
+            <button type="submit" className="primary-button" style={{ marginTop: '10px' }} disabled={loading || isFrozen}>{loading ? 'Processing...' : 'Send Request'}</button>
+          </form>
+        </div>
+
+        <h3 style={{ marginTop: '30px', color: '#1e293b' }}>Pending Split Requests</h3>
+        <div style={{ marginTop: '15px' }}>
+          {splits.length === 0 ? <p style={{ color: '#94a3b8' }}>No active split requests.</p> : splits.map(split => {
+            const isInitiator = split.initiator._id === userId;
+            const myParticipantInfo = split.participants.find(p => p.userId._id === userId);
+
+            return (
+              <div key={split._id} style={{ background: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ fontWeight: 600 }}>{split.description}</div>
+                  <div style={{ fontWeight: 600 }}>Total: PKR {split.totalAmount}</div>
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '10px' }}>
+                  Initiated by {isInitiator ? 'You' : split.initiator.firstName} - Status: {split.status}
+                </div>
+                {!isInitiator && myParticipantInfo && myParticipantInfo.status === 'PENDING' && (
+                  <div style={{ marginTop: '15px', background: '#f1f5f9', padding: '15px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Your Share: <strong>PKR {myParticipantInfo.amount}</strong></span>
+                    <button className="primary-button" style={{ padding: '8px 15px' }} onClick={() => handleAcceptSplit(split._id)} disabled={loading || isFrozen}>
+                      Pay Share
+                    </button>
+                  </div>
+                )}
+                <div style={{ marginTop: '10px' }}>
+                  {split.participants.map((p, idx) => (
+                    <div key={idx} style={{ fontSize: '0.85rem', color: p.status === 'ACCEPTED' ? '#10b981' : '#f59e0b', display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                      <span>{p.userId.firstName} {p.userId.lastName} (PKR {p.amount})</span>
+                      <span>{p.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const renderProfile = () => {
     if (!profile) return <div className="view-container"><p>Loading profile...</p></div>;
@@ -519,6 +748,15 @@ export default function Dashboard({ userData, onLogout }) {
           <button className={`nav-item ${activeTab === 'add' ? 'active' : ''}`} onClick={() => setActiveTab('add')}>
             <PlusCircle size={20} /> Add Funds
           </button>
+          <button className={`nav-item ${activeTab === 'bills' ? 'active' : ''}`} onClick={() => setActiveTab('bills')}>
+            <Receipt size={20} /> Pay Bills
+          </button>
+          <button className={`nav-item ${activeTab === 'split' ? 'active' : ''}`} onClick={() => setActiveTab('split')}>
+            <Users size={20} /> Split Bill
+          </button>
+          <button className={`nav-item ${activeTab === 'qr' ? 'active' : ''}`} onClick={() => setActiveTab('qr')}>
+            <QrCode size={20} /> My QR
+          </button>
           <button className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
             <History size={20} /> History
           </button>
@@ -615,6 +853,9 @@ export default function Dashboard({ userData, onLogout }) {
         {activeTab === 'send' && renderSend()}
         {activeTab === 'add' && renderAdd()}
         {activeTab === 'history' && renderHistory()}
+        {activeTab === 'bills' && renderBills()}
+        {activeTab === 'split' && renderSplit()}
+        {activeTab === 'qr' && renderQR()}
         {activeTab === 'profile' && renderProfile()}
 
         {/* TRANSACTION DETAIL MODAL */}

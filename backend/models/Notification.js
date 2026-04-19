@@ -11,7 +11,7 @@ const NotificationSchema = new mongoose.Schema(
         message: { type: String, required: true },
         type: {
             type: String,
-            enum: ['TRANSACTION', 'SECURITY', 'SYSTEM'],
+            enum: ['TRANSACTION', 'SECURITY', 'SYSTEM', 'SPLIT_REQUEST'],
             default: 'SYSTEM'
         },
         isRead: { type: Boolean, default: false },
