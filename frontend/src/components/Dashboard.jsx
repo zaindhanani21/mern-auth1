@@ -134,13 +134,20 @@ export default function Dashboard({ userData, onLogout }) {
       setNotifications(prev => [notif, ...prev]);
       setUnreadCount(prev => prev + 1);
       setToast({ title: notif.title, msg: notif.message, type: 'info' });
-      setTimeout(() => setToast(null), 5000);
       fetchData();
       fetchSplits();
+      fetchNotifications();
     });
 
     return () => newSocket.close();
-  }, [userId, fetchData, fetchNotifications, fetchProfile]);
+  }, [userId, fetchData, fetchNotifications, fetchProfile, fetchSplits]);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // --- NOTIFICATION ACTIONS ---
   const markAsRead = async (notificationId) => {
