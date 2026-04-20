@@ -400,6 +400,9 @@ router.post("/accept-split", protect, async (req, res) => {
 
         // Notify Initiator
         notifyUser(split.initiator, "Split Paid", `${req.user.firstName} paid their share (PKR ${amount}) for ${split.description}`, "TRANSACTION", req.io);
+        
+        // Notify Acceptor (Self)
+        notifyUser(req.user._id, "Split Approved", `You paid PKR ${amount} for ${split.description}`, "TRANSACTION", req.io);
 
         res.json({ message: "Split Paid Successfully" });
     } catch (error) {
@@ -407,6 +410,33 @@ router.post("/accept-split", protect, async (req, res) => {
         res.status(400).json({ message: error.message });
     } finally {
         session.endSession();
+    }
+});
+
+// 11. REJECT SPLIT REQUEST
+router.post("/reject-split", protect, async (req, res) => {
+    try {
+        const { splitId } = req.body;
+        const split = await SplitRequest.findById(splitId).populate('initiator', 'firstName lastName');
+        if (!split) throw new Error("Split request not found");
+
+        const participantIndex = split.participants.findIndex(p => p.userId.equals(req.user._id));
+        if (participantIndex === -1) throw new Error("You are not part of this split request");
+        
+        if (split.participants[participantIndex].status !== 'PENDING') throw new Error("You have already responded to this request");
+
+        split.participants[participantIndex].status = 'REJECTED';
+        await split.save();
+
+        // Notify Initiator
+        notifyUser(split.initiator._id, "Split Rejected", `${req.user.firstName} rejected the split request for ${split.description}`, "SPLIT_REJECTED", req.io);
+        
+        // Notify Rejector (Self)
+        notifyUser(req.user._id, "Split Rejected", `You rejected the split request from ${split.initiator.firstName}`, "SPLIT_REJECTED", req.io);
+
+        res.json({ message: "Split Rejected successfully" });
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
 });
 

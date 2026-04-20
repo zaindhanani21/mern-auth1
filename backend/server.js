@@ -72,6 +72,20 @@ io.on("connection", (socket) => {
     });
 });
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error("💥 Global Error:", err.stack);
+    res.status(500).json({ message: "Something went wrong on the server!", error: err.message });
+});
+
+// Prevent process crash
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => { // 🟢 Listen on SERVER, not APP
     console.log(`🚀 Server running on http://localhost:${PORT}`);

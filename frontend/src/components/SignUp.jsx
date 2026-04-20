@@ -19,7 +19,19 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
   // Logic
   const updateField = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    let val = e.target.value;
+    const name = e.target.name;
+
+    if (name === "firstName" || name === "lastName" || name === "midName") {
+       val = val.replace(/[^a-zA-Z\s]/g, '');
+    } else if (name === "cnicNum") {
+       val = val.replace(/[^0-9]/g, '');
+       if (val.length > 5) val = val.substring(0, 5) + '-' + val.substring(5);
+       if (val.length > 13) val = val.substring(0, 13) + '-' + val.substring(13);
+       val = val.substring(0, 15);
+    }
+
+    setFormData({ ...formData, [name]: val });
     setError('');
   };
 
@@ -34,6 +46,18 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
     return s; // 0 to 4
   };
 
+  const isUnder18 = (dobString) => {
+    if (!dobString) return false;
+    const dob = new Date(dobString);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
+        age--;
+    }
+    return age < 18;
+  };
+
   const nextStep = () => {
     // Basic validations per step
     if (step === 1) {
@@ -41,6 +65,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
     }
     if (step === 2) {
       if (!formData.dateOfBirth || !formData.nationality || !formData.cnicNum) return setError("Personal details required.");
+      if (isUnder18(formData.dateOfBirth)) return setError("You must be at least 18 years old to sign up.");
       // Masking check for CNIC
       if (!/^\d{5}-\d{7}-\d{1}$/.test(formData.cnicNum)) return setError("CNIC format: 12345-1234567-1");
     }
@@ -59,7 +84,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/auth/signup", {
+      const res = await fetch("http://127.0.0.1:5000/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
@@ -119,7 +144,12 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
                 key="step2" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }}
               >
                 <h3 className="section-title">Personal Details</h3>
-                <input className="input-field" type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={updateField} />
+                <input className="input-field" style={{ marginBottom: isUnder18(formData.dateOfBirth) ? '5px' : '15px' }} type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={updateField} />
+                {isUnder18(formData.dateOfBirth) && (
+                  <div style={{ color: '#ef4444', fontSize: '0.8rem', textAlign: 'left', marginBottom: '15px', fontWeight: '500' }}>
+                    You must be at least 18 years old.
+                  </div>
+                )}
 
                 <select className="input-field select-field" name="nationality" value={formData.nationality} onChange={updateField}>
                   <option value="">Select Nationality</option>

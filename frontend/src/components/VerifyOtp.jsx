@@ -41,7 +41,7 @@ export default function VerifyOtp({
     setMessage("");
     setIsLoading(true);
 
-    const base = "http://localhost:5000/api/auth";
+    const base = "http://127.0.0.1:5000/api/auth";
     const endpoint = isSignupFlow
       ? `${base}/verify-signup`
       : `${base}/verify-otp`;

@@ -149,4 +149,22 @@ router.get('/:userId', protect, async (req, res) => {
     }
 });
 
+// GET /api/profile/mobile/:mobileNumber - Get public profile by mobile number
+router.get('/mobile/:mobileNumber', protect, async (req, res) => {
+    try {
+        const user = await User.findOne({ mobileNumber: req.params.mobileNumber }).select('firstName lastName mobileNumber');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json({
+            id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            mobileNumber: user.mobileNumber
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 export default router;

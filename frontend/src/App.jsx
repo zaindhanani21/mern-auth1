@@ -16,11 +16,26 @@ const PAGES = {
 };
 
 function App() {
-    const [currentPage, setCurrentPage] = useState(PAGES.LANDING);
-    const [userData, setUserData] = useState(null);
+    const [userData, setUserData] = useState(() => {
+        const saved = localStorage.getItem("userData");
+        return saved ? JSON.parse(saved) : null;
+    });
+    const [currentPage, setCurrentPage] = useState(() => {
+        const saved = localStorage.getItem("userData");
+        return saved ? PAGES.DASHBOARD : PAGES.LANDING;
+    });
     const [pendingVerification, setPendingVerification] = useState(null);
     const [pendingSignupVerification, setPendingSignupVerification] = useState(null);
     const [globalMessage, setGlobalMessage] = useState(null);
+
+    // Persist session
+    React.useEffect(() => {
+        if (userData) {
+            localStorage.setItem("userData", JSON.stringify(userData));
+        } else {
+            localStorage.removeItem("userData");
+        }
+    }, [userData]);
 
     // 🟢 Simplified Sign-in Handler
     const handleSigninResponse = (data) => {
@@ -57,6 +72,7 @@ function App() {
         setPendingVerification(null);
         setPendingSignupVerification(null);
         setGlobalMessage(null);
+        localStorage.removeItem("userData");
         setCurrentPage(PAGES.SIGNIN);
     };
 

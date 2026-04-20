@@ -9,6 +9,10 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
   const [message, setMessage] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetStep, setResetStep] = useState(1);
+  const [resetUserId, setResetUserId] = useState(null);
+  const [resetOtp, setResetOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const handleSignin = async (e) => {
     e.preventDefault();
@@ -16,7 +20,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     setMessage("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/signin", {
+      const res = await fetch("http://127.0.0.1:5000/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier, password })
@@ -36,13 +40,44 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
 
   const handleForgot = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/auth/forgot-password", {
+      const res = await fetch("http://127.0.0.1:5000/api/auth/forgot-password", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: resetIdentifier })
       });
       const data = await res.json();
-      setMessage(data.message);
+      if (res.ok) {
+        setResetUserId(data.userId);
+        setResetStep(2);
+        setMessage("OTP sent to your email.");
+      } else {
+        setMessage(data.message || "Error sending reset link.");
+      }
     } catch { setMessage("Error sending reset link"); }
+    finally { setLoading(false); }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:5000/api/auth/reset-password", {
+        method: "POST", headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ userId: resetUserId, otpCode: resetOtp, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage("Password updated successfully. Please sign in.");
+        setShowForgotPassword(false);
+        setResetStep(1);
+        setResetIdentifier("");
+        setResetOtp("");
+        setNewPassword("");
+      } else {
+        setMessage(data.message || "Failed to reset password.");
+      }
+    } catch { setMessage("Network error."); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -71,12 +106,27 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
               {loading ? "Verifying..." : "Sign In"}
             </button>
           </form>
-        ) : (
+        ) : resetStep === 1 ? (
           <form onSubmit={handleForgot}>
             <h3 className="section-title">Reset Password</h3>
-            <input className="input-field" placeholder="Enter Email" value={resetIdentifier} onChange={e => setResetIdentifier(e.target.value)} required />
-            <button type="submit" className="primary-button" style={{ marginTop: '15px' }}>Send Reset Link</button>
-            <button type="button" className="secondary-button" onClick={() => setShowForgotPassword(false)}>Back to Login</button>
+            <div className="input-group">
+              <input className="input-field" placeholder="Enter Email or Mobile" value={resetIdentifier} onChange={e => setResetIdentifier(e.target.value)} required disabled={loading} />
+            </div>
+            <button type="submit" className="primary-button" style={{ marginTop: '15px' }} disabled={loading}>{loading ? "Sending..." : "Send Reset Link"}</button>
+            <button type="button" className="secondary-button" onClick={() => { setShowForgotPassword(false); setResetStep(1); setMessage(""); }} disabled={loading}>Back to Login</button>
+          </form>
+        ) : (
+          <form onSubmit={handleResetPassword}>
+            <h3 className="section-title">Set New Password</h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>Enter the 6-digit OTP sent to your email.</p>
+            <div className="input-group">
+              <input className="input-field" placeholder="Enter OTP" value={resetOtp} onChange={e => setResetOtp(e.target.value)} required disabled={loading} maxLength={6} style={{ letterSpacing: '2px', textAlign: 'center' }} />
+            </div>
+            <div className="input-group">
+              <input className="input-field" type="password" placeholder="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required disabled={loading} minLength={6} />
+            </div>
+            <button type="submit" className="primary-button" style={{ marginTop: '15px' }} disabled={loading}>{loading ? "Resetting..." : "Reset Password"}</button>
+            <button type="button" className="secondary-button" onClick={() => { setShowForgotPassword(false); setResetStep(1); setMessage(""); }} disabled={loading}>Cancel</button>
           </form>
         )}
 
