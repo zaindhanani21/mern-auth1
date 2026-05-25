@@ -10,12 +10,12 @@ const TransactionSchema = new mongoose.Schema(
         receiverWallet: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Wallet',
-            required: true
+            default: null
         },
         amount: { type: Number, required: true },
         type: {
             type: String,
-            enum: ['SEND', 'RECEIVE', 'ADD_MONEY', 'BILL_PAYMENT', 'SPLIT_PAYMENT'],
+            enum: ['SEND', 'RECEIVE', 'ADD_MONEY', 'BILL_PAYMENT', 'SPLIT_PAYMENT', 'EXTERNAL_TRANSFER'],
             required: true
         },
         description: { type: String },

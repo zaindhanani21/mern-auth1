@@ -1,4 +1,5 @@
 import express from "express";
+import Stripe from "stripe";
 import mongoose from "mongoose";
 import { protect } from "../auth.js";
 import Wallet from "../models/Wallet.js";
@@ -9,6 +10,7 @@ import ExternalBank from "../models/ExternalBank.js";
 import SplitRequest from "../models/SplitRequest.js";
 import { sendMoneyReceivedEmail, sendMoneySentEmail, sendFundsAddedEmail } from "../mailHelper.js";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const router = express.Router();
 
 // Helper to Create Notification
@@ -42,13 +44,14 @@ router.get("/dashboard", protect, async (req, res) => {
             let otherPartyMobile = "";
 
             if (tx.type === 'SEND' || tx.type === 'RECEIVE') {
-                // Resolve the other party's wallet
                 const otherWalletId = isSender ? tx.receiverWallet : tx.senderWallet;
                 const otherWallet = await Wallet.findById(otherWalletId).populate('userId', 'firstName lastName mobileNumber');
                 if (otherWallet && otherWallet.userId) {
                     otherPartyName = `${otherWallet.userId.firstName} ${otherWallet.userId.lastName}`;
                     otherPartyMobile = otherWallet.userId.mobileNumber;
                 }
+            } else if (tx.type === 'EXTERNAL_TRANSFER') {
+                otherPartyName = tx.description;
             }
 
             return {
@@ -73,17 +76,67 @@ router.get("/dashboard", protect, async (req, res) => {
     }
 });
 
-// 2. ADD MONEY
+// 2. ADD MONEY (Stripe Integration)
 router.post("/add-money", protect, async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const { amount, cardNumber, cvc, expiryDate } = req.body;
-        if (amount <= 0) throw new Error("Invalid amount");
+        const { amount, paymentMethodId } = req.body;
 
-        // Validate Bank Mock (Optional logic from previous, simplified here)
-        // [Assume bank check passes for brevity or re-implement if strict]
+        // --- STEP 1: Validate the request ---
+        if (!amount || amount <= 0) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: "Please enter a valid amount." });
+        }
+        if (!paymentMethodId) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ message: "Card details are missing. Please try again." });
+        }
 
+        // --- STEP 2: Confirm the payment with Stripe ---
+        // Stripe charges in smallest currency unit (cents/paisa), so multiply by 100
+        let paymentIntent;
+        try {
+            paymentIntent = await stripe.paymentIntents.create({
+                amount: Math.round(amount * 100), // e.g. PKR 1000 → 100000 paisa
+                currency: "pkr",
+                payment_method: paymentMethodId,
+                confirm: true,
+                automatic_payment_methods: {
+                    enabled: true,
+                    allow_redirects: "never"
+                }
+            });
+        } catch (stripeError) {
+            await session.abortTransaction();
+            session.endSession();
+
+            // Handle specific Stripe error codes clearly
+            const code = stripeError.code;
+            if (code === "card_declined") {
+                const declineCode = stripeError.decline_code;
+                if (declineCode === "insufficient_funds") {
+                    return res.status(400).json({ message: "Transaction failed: Insufficient funds in your bank account." });
+                }
+                return res.status(400).json({ message: "Your card was declined. Please check your card details." });
+            }
+            if (code === "incorrect_number" || code === "invalid_number") {
+                return res.status(400).json({ message: "Invalid card details. Please check your card number." });
+            }
+            if (code === "incorrect_cvc" || code === "invalid_cvc") {
+                return res.status(400).json({ message: "Invalid card details. Please check your CVC." });
+            }
+            if (code === "expired_card") {
+                return res.status(400).json({ message: "Your card has expired. Please use a different card." });
+            }
+
+            // Generic Stripe error fallback
+            return res.status(400).json({ message: stripeError.message || "Payment failed. Please try again." });
+        }
+
+        // --- STEP 4: Payment confirmed — update wallet in MongoDB ---
         const wallet = await Wallet.findOne({ userId: req.user._id }).session(session);
         if (!wallet) throw new Error("Wallet not found");
         if (wallet.status === 'FROZEN') throw new Error("Wallet is Frozen");
@@ -91,25 +144,35 @@ router.post("/add-money", protect, async (req, res) => {
         wallet.balance += Number(amount);
         await wallet.save({ session });
 
+        // --- STEP 5: Log the transaction in the database ---
         const tx = new Transaction({
             receiverWallet: wallet._id,
             amount,
             type: 'ADD_MONEY',
-            description: `Deposit via Card ending ${cardNumber.slice(-4)}`
+            description: `Deposit via Stripe (Payment ID: ${paymentIntent.id.slice(-8)})`
         });
         await tx.save({ session });
+
+        // All good — commit everything to the database
         await session.commitTransaction();
 
-        // Notify
-        notifyUser(req.user._id, "Funds Added", `PKR ${amount} added to your wallet.`, "TRANSACTION", req.io);
+        // --- STEP 6: Send real-time Socket.io notification ---
+        notifyUser(
+            req.user._id,
+            "Funds Added ✅",
+            `PKR ${amount} has been added to your Waxella wallet successfully!`,
+            "TRANSACTION",
+            req.io
+        );
 
-        // Send Email
+        // --- STEP 7: Send confirmation email ---
         sendFundsAddedEmail(req.user.email, amount);
 
         res.json({ message: "Money Added Successfully", newBalance: wallet.balance });
+
     } catch (error) {
         await session.abortTransaction();
-        res.status(400).json({ message: error.message });
+        res.status(500).json({ message: error.message || "Something went wrong. Please try again." });
     } finally {
         session.endSession();
     }
@@ -437,6 +500,93 @@ router.post("/reject-split", protect, async (req, res) => {
         res.json({ message: "Split Rejected successfully" });
     } catch (error) {
         res.status(400).json({ message: error.message });
+    }
+});
+
+// 12. SEND EXTERNAL BANK MONEY (Stripe Bank Token API)
+router.post("/send-external-money", protect, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const { bankName, accountNumber, amount } = req.body;
+
+        // Validation
+        if (!accountNumber || accountNumber.trim().length < 6) {
+            throw new Error("Please enter a valid Bank Account Number (minimum 6 digits)");
+        }
+        if (!amount || Number(amount) <= 0) {
+            throw new Error("Please enter a valid transfer amount");
+        }
+        if (!bankName) {
+            throw new Error("Please select a bank");
+        }
+
+        // Check Wallexa Wallet Balance
+        const senderWallet = await Wallet.findOne({ userId: req.user._id }).session(session);
+        if (!senderWallet) throw new Error("Wallet not found");
+        if (senderWallet.status === 'FROZEN') throw new Error("Your wallet is Frozen. Please unfreeze first.");
+        if (senderWallet.balance < Number(amount)) throw new Error("Insufficient Wallet Balance");
+
+        // Real-time Stripe Bank Token API Call
+        let token;
+        try {
+            token = await stripe.tokens.create({
+                bank_account: {
+                    country: 'US',
+                    currency: 'usd',
+                    account_holder_name: `${req.user.firstName} ${req.user.lastName}`,
+                    account_holder_type: 'individual',
+                    routing_number: '110000000',
+                    account_number: accountNumber.trim(),
+                },
+            });
+        } catch (stripeError) {
+            throw new Error(`Bank Transfer Declined: ${stripeError.message}`);
+        }
+
+        // Deduct from Wallexa Wallet
+        senderWallet.balance -= Number(amount);
+        await senderWallet.save({ session });
+
+        // Save Transaction History
+        const tx = new Transaction({
+            senderWallet: senderWallet._id,
+            receiverWallet: null,
+            amount: Number(amount),
+            type: 'EXTERNAL_TRANSFER',
+            description: `Sent to ${bankName} A/C: ••••${accountNumber.trim().slice(-4)}`
+        });
+        await tx.save({ session });
+
+        await session.commitTransaction();
+
+        // Real-time Socket Notification
+        notifyUser(
+            req.user._id,
+            "Transfer Successful 🏦",
+            `PKR ${amount} sent to ${bankName} account ending in ${accountNumber.trim().slice(-4)}`,
+            "TRANSACTION",
+            req.io
+        );
+
+        // Email Confirmation
+        sendMoneySentEmail(
+            req.user.email,
+            `${bankName} (A/C: ••••${accountNumber.trim().slice(-4)})`,
+            Number(amount)
+        );
+
+        res.json({
+            message: "Bank Transfer Successful!",
+            newBalance: senderWallet.balance,
+            stripeToken: token.id
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        res.status(400).json({ message: error.message });
+    } finally {
+        session.endSession();
     }
 });
 

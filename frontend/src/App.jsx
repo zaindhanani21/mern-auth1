@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import Signup from "./components/SignUp";
 import Signin from "./components/SignIn";
 import Dashboard from "./components/Dashboard";
+import { Elements } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
 import VerifyOtp from "./components/VerifyOtp";
 import LandingPage from "./components/LandingPage";
 
@@ -146,11 +148,13 @@ function App() {
 
             {/* USER DASHBOARD ROUTE */}
             {currentPage === PAGES.DASHBOARD && (
-                <Dashboard
-                    userData={userData}
-                    onLogout={handleLogout}
-                // 🟢 Removed Admin Navigation handler
-                />
+                <Elements stripe={loadStripe("pk_test_51TSVFeDmC8zjQ7IGxqb8Hf2siIt1ixOpE1IpNevJup4eXC5JiLVU0LefrNAK3Kse9efMuAXscZXtiIVjrrrYKCQ200qQUcS87t")}>
+                    <Dashboard
+                        userData={userData}
+                        onLogout={handleLogout}
+                    // 🟢 Removed Admin Navigation handler
+                    />
+                </Elements>
             )}
         </div>
     );

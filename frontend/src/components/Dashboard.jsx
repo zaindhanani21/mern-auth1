@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { io } from "socket.io-client";
 import { QRCodeSVG } from 'qrcode.react';
 import { Home, Send, PlusCircle, History, Shield, LogOut, Bell, Menu, User, X, Clock, Check, Receipt, QrCode, Users } from 'lucide-react';
 import "./Css/ModernDashboard.css";
 
 const SOCKET_URL = "http://127.0.0.1:5000";
+const stripePromise = loadStripe("pk_test_51TSVFeDmC8zjQ7IGxqb8Hf2siIt1ixOpE1IpNevJup4eXC5JiLVU0LefrNAK3Kse9efMuAXscZXtiIVjrrrYKCQ200qQUcS87t");
 
 export default function Dashboard({ userData, onLogout }) {
   const [socket, setSocket] = useState(null);
@@ -39,10 +42,18 @@ export default function Dashboard({ userData, onLogout }) {
 
   // Forms
   const [showSendConfirm, setShowSendConfirm] = useState(false);
+  const [sendType, setSendType] = useState('wallexa');
   const [sendForm, setSendForm] = useState({ recipient: '', amount: '', note: '', recipientName: '' });
+    const [externalForm, setExternalForm] = useState({
+    bankName: 'Meezan Bank',
+    accountNumber: '',
+    amount: ''
+  });
+  const [showExternalConfirm, setShowExternalConfirm] = useState(false);
   const [addForm, setAddForm] = useState({ amount: '', method: 'card', cardNumber: '', expiry: '', cvc: '' });
   const [otp, setOtp] = useState("");
   const [showOtpModal, setShowOtpModal] = useState(false);
+  const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
 
   // New Features State
   const [billForm, setBillForm] = useState({ provider: 'K-Electric', consumerNumber: '', amount: '', type: 'Electricity' });
@@ -163,6 +174,52 @@ export default function Dashboard({ userData, onLogout }) {
 
   const markAllAsRead = () => markAsRead('all');
 
+    const handleExternalTransfer = async () => {
+    setShowExternalConfirm(false);
+    setLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:5000/api/wallet/send-external-money", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          bankName: externalForm.bankName,
+          accountNumber: externalForm.accountNumber,
+          amount: Number(externalForm.amount)
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setToast({ title: "Transfer Successful 🎉", msg: `PKR ${externalForm.amount} sent to ${externalForm.bankName}!`, type: "success" });
+        setExternalForm({ bankName: 'Meezan Bank', accountNumber: '', amount: '' });
+        fetchData();
+        fetchNotifications();
+      } else {
+        setToast({ title: "Transfer Failed ❌", msg: data.message, type: "error" });
+      }
+    } catch (err) {
+      setToast({ title: "Network Error ❌", msg: "Connection failed. Please try again.", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const initiateExternalTransfer = (e) => {
+    e.preventDefault();
+    if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen!", type: "error" });
+    if (!externalForm.accountNumber || externalForm.accountNumber.length < 6) {
+      return setToast({ title: "Error", msg: "Please enter a valid Account Number (min 6 digits)", type: "error" });
+    }
+    if (!externalForm.amount || Number(externalForm.amount) <= 0) {
+      return setToast({ title: "Error", msg: "Please enter a valid amount", type: "error" });
+    }
+    // Show confirmation popup BEFORE hitting Stripe
+    setShowExternalConfirm(true);
+  };
+
   // --- TRANSACTION ACTIONS ---
   const fetchRecipientName = async () => {
     if (!sendForm.recipient || sendForm.recipient.length < 10) {
@@ -234,24 +291,41 @@ export default function Dashboard({ userData, onLogout }) {
     finally { setLoading(false); }
   };
 
+  const stripe = useStripe();
+  const elements = useElements();
+
   const handleAdd = async (e) => {
     e.preventDefault();
     if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen", type: "error" });
+    if (!stripe || !elements) return setToast({ title: "Error", msg: "Stripe is not loaded yet", type: "error" });
+
     setLoading(true);
     try {
+      const cardElement = elements.getElement(CardElement);
+      const { paymentMethod, error } = await stripe.createPaymentMethod({
+        type: "card",
+        card: cardElement,
+      });
+
+      if (error) {
+        setToast({ title: "Card Error", msg: error.message, type: "error" });
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch("http://127.0.0.1:5000/api/wallet/add-money", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
           amount: Number(addForm.amount),
-          cardNumber: addForm.cardNumber,
-          expiryDate: addForm.expiry,
-          cvc: addForm.cvc
+          paymentMethodId: paymentMethod.id,
         })
       });
       const data = await res.json();
       if (res.ok) {
         setToast({ title: "Success", msg: "Funds Added!", type: "success" });
         setAddForm({ amount: '', method: 'card', cardNumber: '', expiry: '', cvc: '' });
+        cardElement.clear();
         fetchData();
         fetchNotifications();
       } else {
@@ -535,28 +609,142 @@ export default function Dashboard({ userData, onLogout }) {
     </div>
   );
 
-  const renderSend = () => (
+    const renderSend = () => (
     <div className="view-container">
       <h2 className="page-title">Send Money</h2>
-      <form className="mt-4" onSubmit={initiateSend}>
-        <div className="form-group">
-          <label className="form-label">Recipient Mobile</label>
-          <input className="form-input" placeholder="03001234567" value={sendForm.recipient} onChange={e => {
-             const val = e.target.value.replace(/[^0-9]/g, '');
-             setSendForm({ ...sendForm, recipient: val, recipientName: '' });
-          }} onBlur={fetchRecipientName} required disabled={isFrozen} />
-          {sendForm.recipientName && (
-             <div style={{ fontSize: '0.85rem', marginTop: '5px', color: sendForm.recipientName === 'User not found' ? '#ef4444' : '#10b981', fontWeight: 500 }}>
-                 {sendForm.recipientName !== 'User not found' ? `Sending to: ${sendForm.recipientName}` : sendForm.recipientName}
-             </div>
-          )}
+
+      {/* Choice Buttons */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', marginTop: '20px' }}>
+        <button 
+          type="button"
+          style={{
+            flex: 1,
+            padding: '12px',
+            borderRadius: '10px',
+            border: sendType === 'wallexa' ? '1px solid #667eea' : '1px solid rgba(255,255,255,0.1)',
+            background: sendType === 'wallexa' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.05)',
+            color: 'white',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            boxShadow: sendType === 'wallexa' ? '0 4px 15px rgba(102, 126, 234, 0.4)' : 'none'
+          }}
+          onClick={() => setSendType('wallexa')}
+        >
+          📱 Send to Wallexa
+        </button>
+        <button 
+          type="button"
+          style={{
+            flex: 1,
+            padding: '12px',
+            borderRadius: '10px',
+            border: sendType === 'external' ? '1px solid #667eea' : '1px solid rgba(255,255,255,0.1)',
+            background: sendType === 'external' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'rgba(255,255,255,0.05)',
+            color: 'white',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            boxShadow: sendType === 'external' ? '0 4px 15px rgba(102, 126, 234, 0.4)' : 'none'
+          }}
+          onClick={() => setSendType('external')}
+        >
+          🏦 External Bank
+        </button>
+      </div>
+
+      {/* Option 1: Send within Wallexa (Unchanged P2P Form) */}
+      {sendType === 'wallexa' && (
+        <form className="mt-4" onSubmit={initiateSend}>
+          <div className="form-group">
+            <label className="form-label">Recipient Mobile</label>
+            <input className="form-input" placeholder="03001234567" value={sendForm.recipient} onChange={e => {
+               const val = e.target.value.replace(/[^0-9]/g, '');
+               setSendForm({ ...sendForm, recipient: val, recipientName: '' });
+            }} onBlur={fetchRecipientName} required disabled={isFrozen} />
+            {sendForm.recipientName && (
+               <div style={{ fontSize: '0.85rem', marginTop: '5px', color: sendForm.recipientName === 'User not found' ? '#ef4444' : '#10b981', fontWeight: 500 }}>
+                   {sendForm.recipientName !== 'User not found' ? `Sending to: ${sendForm.recipientName}` : sendForm.recipientName}
+               </div>
+            )}
+          </div>
+          <div className="form-group">
+            <label className="form-label">Amount (PKR)</label>
+            <input className="form-input" type="text" placeholder="0" value={sendForm.amount} onChange={e => setSendForm({ ...sendForm, amount: e.target.value.replace(/[^0-9]/g, '') })} required disabled={isFrozen} />
+          </div>
+          <button type="submit" className="primary-button" disabled={loading || isFrozen}>
+            {loading ? 'Processing...' : 'Proceed to Send'}
+          </button>
+        </form>
+      )}
+
+            {/* Option 2: Send to External Bank */}
+      {sendType === 'external' && (
+        <div className="mt-4" style={{ animation: 'fadeIn 0.3s ease' }}>
+          <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '20px' }}>
+            🏦 Transfer funds directly to any external bank account via Stripe secure sandbox.
+          </p>
+
+          <form onSubmit={initiateExternalTransfer}>
+
+            <div className="form-group">
+              <label className="form-label">Select Destination Bank</label>
+              <select
+                className="form-input"
+                style={{ background: '#0f172a', color: 'white', border: '1px solid rgba(255,255,255,0.15)' }}
+                value={externalForm.bankName}
+                onChange={e => setExternalForm({ ...externalForm, bankName: e.target.value })}
+                required
+                disabled={isFrozen}
+              >
+                <option value="Meezan Bank">Meezan Bank 🏦</option>
+                <option value="HBL Bank">HBL Bank 🏦</option>
+                <option value="Easypaisa">Easypaisa 📱</option>
+                <option value="JazzCash">JazzCash 📱</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Bank Account Number</label>
+              <input
+                className="form-input"
+                maxLength={20}
+                placeholder="Enter account number e.g. 0001234567"
+                value={externalForm.accountNumber}
+                onChange={e => setExternalForm({ ...externalForm, accountNumber: e.target.value.replace(/[^0-9]/g, '') })}
+                required
+                disabled={isFrozen}
+              />
+              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '5px' }}>
+                🔒 Account will be validated in real-time via Stripe API
+              </p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Amount (PKR)</label>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="0"
+                value={externalForm.amount}
+                onChange={e => setExternalForm({ ...externalForm, amount: e.target.value.replace(/[^0-9]/g, '') })}
+                required
+                disabled={isFrozen}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="primary-button"
+              style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+              disabled={loading || isFrozen}
+            >
+              {loading ? 'Processing...' : 'Proceed to Transfer'}
+            </button>
+
+          </form>
         </div>
-        <div className="form-group">
-          <label className="form-label">Amount (PKR)</label>
-          <input className="form-input" type="text" placeholder="0" value={sendForm.amount} onChange={e => setSendForm({ ...sendForm, amount: e.target.value.replace(/[^0-9]/g, '') })} required disabled={isFrozen} />
-        </div>
-        <button type="submit" className="primary-button" disabled={loading || isFrozen}>{loading ? 'Processing...' : 'Proceed to Send'}</button>
-      </form>
+      )}
     </div>
   );
 
@@ -566,27 +754,54 @@ export default function Dashboard({ userData, onLogout }) {
       <form className="mt-4" onSubmit={handleAdd}>
         <div className="form-group">
           <label className="form-label">Amount (PKR)</label>
-          <input className="form-input" type="text" placeholder="5000" value={addForm.amount} onChange={e => setAddForm({ ...addForm, amount: e.target.value.replace(/[^0-9]/g, '') })} required disabled={isFrozen} />
+          <input
+            className="form-input"
+            type="text"
+            placeholder="5000"
+            value={addForm.amount}
+            onChange={e => setAddForm({ ...addForm, amount: e.target.value.replace(/[^0-9]/g, '') })}
+            required
+            disabled={isFrozen}
+          />
         </div>
 
         <h4 className="form-label" style={{ marginTop: '20px' }}>Payment Details</h4>
         <div className="form-group">
-          <input className="form-input" placeholder="Card Number (16 digits)" value={addForm.cardNumber} onChange={e => setAddForm({ ...addForm, cardNumber: e.target.value.replace(/[^0-9]/g, '').slice(0,16) })} required disabled={isFrozen} />
-        </div>
-        <div style={{ display: 'flex', gap: '15px' }}>
-          <div className="form-group" style={{ flex: 1 }}>
-            <input className="form-input" placeholder="MM/YY" value={addForm.expiry} onChange={e => {
-               let val = e.target.value.replace(/[^0-9/]/g, '');
-               if(val.length === 2 && !val.includes('/')) val += '/';
-               setAddForm({ ...addForm, expiry: val.slice(0,5) });
-            }} required disabled={isFrozen} />
+          <label className="form-label">Card Information</label>
+          <div style={{
+            padding: '12px 15px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '10px',
+            background: 'rgba(255,255,255,0.05)',
+          }}>
+            <CardElement
+              options={{
+                disabled: isFrozen,
+                 hidePostalCode: true,
+                style: {
+                  base: {
+                    fontSize: '16px',
+                    color: '#f8fafc',
+                    '::placeholder': { color: '#94a3b8' },
+                    iconColor: '#667eea',
+                  },
+                  invalid: { color: '#ef4444' },
+                },
+              }}
+            />
           </div>
-          <div className="form-group" style={{ flex: 1 }}>
-            <input className="form-input" type="password" placeholder="CVC" value={addForm.cvc} onChange={e => setAddForm({ ...addForm, cvc: e.target.value.replace(/[^0-9]/g, '').slice(0,4) })} required disabled={isFrozen} />
-          </div>
+          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '8px' }}>
+            🔒 Your card details are encrypted and secured by Stripe.
+          </p>
         </div>
 
-        <button type="submit" className="primary-button" disabled={loading || isFrozen}>{loading ? 'Processing...' : 'Deposit Funds'}</button>
+        <button
+          type="submit"
+          className="primary-button"
+          disabled={loading || isFrozen || !stripe}
+        >
+          {loading ? 'Processing...' : 'Deposit Funds'}
+        </button>
       </form>
     </div>
   );
@@ -984,8 +1199,7 @@ export default function Dashboard({ userData, onLogout }) {
           </form>
         )}
       </div>
-    );
-  };
+    )}
 
   // Helper Components
   const InfoRow = ({ label, value, locked }) => (
@@ -1032,7 +1246,7 @@ export default function Dashboard({ userData, onLogout }) {
           <button className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
             <User size={20} /> Profile
           </button>
-          <button className={`nav-item`} onClick={() => requestFreeze()}>
+          <button className={`nav-item`} onClick={() => setShowFreezeConfirm(true)}>
             <Shield size={20} /> {isFrozen ? "Unfreeze" : "Freeze"}
           </button>
         </nav>
@@ -1147,7 +1361,7 @@ export default function Dashboard({ userData, onLogout }) {
                 </div>
 
                 <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px' }}>
-                  <InfoRow label="Type" value={selectedTx.type === 'ADD_MONEY' ? 'Funds Added' : (selectedTx.isSender ? 'Money Sent' : 'Money Received')} />
+                  <InfoRow label="Type" value={selectedTx.type === 'ADD_MONEY' ? 'Funds Added' : (selectedTx.type === 'EXTERNAL_TRANSFER' ? '🏦 External Transfer' : (selectedTx.isSender ? 'Money Sent' : 'Money Received'))} />
                   <InfoRow label={selectedTx.type === 'ADD_MONEY' ? 'Source' : (selectedTx.isSender ? 'To' : 'From')} value={selectedTx.otherPartyName} />
                   {selectedTx.otherPartyMobile && <InfoRow label="Mobile" value={selectedTx.otherPartyMobile} />}
                   <InfoRow label="Date & Time" value={formatTime(selectedTx.createdAt)} />
@@ -1157,6 +1371,45 @@ export default function Dashboard({ userData, onLogout }) {
             </div>
           </div>
         )}
+
+             {/* FREEZE/UNFREEZE CONFIRMATION MODAL */}
+     {showFreezeConfirm && (
+       <div className="modal-overlay" onClick={() => setShowFreezeConfirm(false)}>
+         <div className="modal-card" onClick={e => e.stopPropagation()}>
+           <div className="modal-header">
+             <h3>{isFrozen ? "Unfreeze Account 🔓" : "Freeze Account ❄️"}</h3>
+             <button className="close-btn" onClick={() => setShowFreezeConfirm(false)}>×</button>
+           </div>
+           
+           <p style={{ marginBottom: '20px', color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>
+             {isFrozen 
+               ? "Are you sure you want to unfreeze your Wallexa account? This will restore all transaction capabilities."
+               : "Are you sure you want to freeze your Wallexa account? This will temporarily block all transfers and deposits until you unfreeze it."
+             }
+           </p>
+
+           <div style={{ display: 'flex', gap: '10px' }}>
+             <button 
+               className="primary-button" 
+               style={{ flex: 1, background: isFrozen ? '#10b981' : '#ef4444', color: 'white' }} 
+               onClick={() => {
+                 setShowFreezeConfirm(false); // Close confirmation modal
+                 requestFreeze();            // Trigger OTP and then OTP modal
+               }}
+             >
+               Confirm
+             </button>
+             <button 
+               className="secondary-button" 
+               style={{ flex: 1 }} 
+               onClick={() => setShowFreezeConfirm(false)}
+             >
+               Cancel
+             </button>
+           </div>
+         </div>
+       </div>
+     )}
 
         {/* OTP MODAL */}
         {showOtpModal && (
@@ -1173,7 +1426,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* SEND CONFIRMATION MODAL */}
+                {/* PEER TO PEER SEND CONFIRMATION MODAL */}
         {showSendConfirm && (
           <div className="modal-overlay" onClick={() => setShowSendConfirm(false)}>
             <div className="modal-card" onClick={e => e.stopPropagation()}>
@@ -1185,10 +1438,78 @@ export default function Dashboard({ userData, onLogout }) {
                 Are you sure you want to send <strong>PKR {sendForm.amount}</strong> to <strong>{sendForm.recipientName}</strong> ({sendForm.recipient})?
               </p>
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button className="primary-button" style={{ flex: 1, background: '#ef4444', color: 'white' }} onClick={handleSend} disabled={loading}>
+                <button className="primary-button" style={{ flex: 1, background: '#667eea', color: 'white' }} onClick={handleSend} disabled={loading}>
                   {loading ? 'Sending...' : 'Yes, Send Now'}
                 </button>
                 <button className="secondary-button" style={{ flex: 1 }} onClick={() => setShowSendConfirm(false)} disabled={loading}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EXTERNAL BANK CONFIRMATION MODAL */}
+        {showExternalConfirm && (
+          <div className="modal-overlay" onClick={() => setShowExternalConfirm(false)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Confirm Bank Transfer</h3>
+                <button className="close-btn" onClick={() => setShowExternalConfirm(false)}>×</button>
+              </div>
+
+              <p style={{ color: '#94a3b8', marginBottom: '15px', fontSize: '0.9rem' }}>
+                Please verify the transfer details before confirming:
+              </p>
+
+              <div style={{
+                background: 'rgba(255,255,255,0.05)',
+                borderRadius: '12px',
+                padding: '18px',
+                marginBottom: '20px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: '#94a3b8' }}>Destination Bank:</span>
+                  <strong style={{ color: '#f8fafc' }}>{externalForm.bankName}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: '#94a3b8' }}>Account Number:</span>
+                  <strong style={{ color: '#f8fafc' }}>
+                    {'•'.repeat(Math.max(0, externalForm.accountNumber.length - 4))}{externalForm.accountNumber.slice(-4)}
+                  </strong>
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  paddingTop: '12px',
+                  borderTop: '1px solid rgba(255,255,255,0.1)'
+                }}>
+                  <span style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Amount:</span>
+                  <strong style={{ color: '#10b981', fontSize: '1.3rem' }}>
+                    PKR {Number(externalForm.amount).toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+
+              <p style={{ color: '#f59e0b', fontSize: '0.8rem', marginBottom: '20px', textAlign: 'center' }}>
+                ⚠️ This transaction will be validated via Stripe API and cannot be reversed once confirmed.
+              </p>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  className="primary-button"
+                  style={{ flex: 1, background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+                  onClick={handleExternalTransfer}
+                  disabled={loading}
+                >
+                  {loading ? 'Sending...' : '✅ Confirm Transfer'}
+                </button>
+                <button
+                  className="secondary-button"
+                  style={{ flex: 1 }}
+                  onClick={() => setShowExternalConfirm(false)}
+                  disabled={loading}
+                >
                   Cancel
                 </button>
               </div>
