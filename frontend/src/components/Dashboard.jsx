@@ -56,7 +56,11 @@ export default function Dashboard({ userData, onLogout }) {
   const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
 
   // New Features State
-  const [billForm, setBillForm] = useState({ provider: 'K-Electric', consumerNumber: '', amount: '', type: 'Electricity' });
+  const [billForm, setBillForm] = useState({ billType: 'Electricity Bill', consumerNumber: '' });
+  const [activeInvoices, setActiveInvoices] = useState([]);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
+  const [billFetched, setBillFetched] = useState(false);
+  const [showBillConfirm, setShowBillConfirm] = useState(false);
   const [splitForm, setSplitForm] = useState({ description: '', totalAmount: '', friends: [{ mobileNumber: '', name: '' }] });
   const [splits, setSplits] = useState([]);
 
@@ -207,7 +211,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  const initiateExternalTransfer = (e) => {
+      const initiateExternalTransfer = (e) => {
     e.preventDefault();
     if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen!", type: "error" });
     if (!externalForm.accountNumber || externalForm.accountNumber.length < 6) {
@@ -412,37 +416,57 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   // --- NEW FEATURE ACTIONS ---
-  const handlePayBill = async (e) => {
-    e.preventDefault();
-    if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen", type: "error" });
-    setLoading(true);
-    try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/pay-bill", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify(billForm)
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setToast({ title: "Success", msg: "Bill Paid Successfully!", type: "success" });
-        setBillForm({ provider: 'K-Electric', consumerNumber: '', amount: '', type: 'Electricity' });
-        fetchData();
-        fetchNotifications();
-      } else {
-        setToast({ title: "Failed", msg: data.message, type: "error" });
-      }
-    } catch { setToast({ title: "Error", msg: "Network error", type: "error" }); }
-    finally { setLoading(false); }
-  };
+  const handlePayBill = async () => {
+  if (isFrozen) return setToast({ title: "Wallet Frozen", msg: "Your wallet is currently frozen. Please unfreeze to proceed.", type: "error" });
+  if (selectedInvoiceIds.length === 0) return setToast({ title: "No Bills Selected", msg: "Please select at least one bill to proceed with payment.", type: "error" });
+  setLoading(true);
+  try {
+    const res = await fetch("http://127.0.0.1:5000/api/wallet/pay-selected-bills", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ invoiceIds: selectedInvoiceIds })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setToast({ title: "Payment Successful", msg: `${selectedInvoiceIds.length} bill(s) paid. PKR ${data.totalPaid.toLocaleString()} deducted from your wallet.`, type: "success" });
+      setSelectedInvoiceIds([]);
+      setBillFetched(false);
+      setActiveInvoices([]);
+      setBillForm({ billType: 'Electricity Bill', consumerNumber: '' });
+      fetchData();
+      fetchNotifications();
+    } else {
+      setToast({ title: "Failed", msg: data.message, type: "error" });
+    }
+  } catch { setToast({ title: "Error", msg: "Network error", type: "error" }); }
+  finally { setLoading(false); }
+};
 
-  const handleFetchBillAmount = () => {
-     // Mock fetch bill
-     if (!billForm.consumerNumber) {
-        return setToast({ title: "Error", msg: "Enter consumer number first", type: "error" });
-     }
-     const mockAmount = Math.floor(Math.random() * 5000) + 500;
-     setBillForm(prev => ({...prev, amount: mockAmount.toString()}));
-     setToast({ title: "Info", msg: "Bill details fetched", type: "info" });
-  };
+    const handleFetchBillAmount = async () => {
+  if (!billForm.consumerNumber || billForm.consumerNumber.length !== 11) {
+    return setToast({ title: "Invalid Account Number", msg: "Please enter a valid 11-digit mobile number linked to your utility account.", type: "error" });
+  }
+  setLoading(true);
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`,
+      { headers: { Authorization: `Bearer ${getToken()}` } }
+    );
+    const data = await res.json();
+    if (res.ok) {
+      setActiveInvoices(data.invoices);
+      setSelectedInvoiceIds([]);
+      setBillFetched(true);
+      setToast({ title: "Bills Retrieved", msg: `${data.invoices.length} bill(s) found for account ${billForm.consumerNumber}.`, type: "success" });
+    } else {
+      setToast({ title: "Error", msg: data.message, type: "error" });
+    }
+  } catch {
+    setToast({ title: "Error", msg: "Network error", type: "error" });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const fetchFriendName = async (index, mobileNumber) => {
     if (!mobileNumber || mobileNumber.length < 10) {
@@ -849,40 +873,205 @@ export default function Dashboard({ userData, onLogout }) {
     </div>
   );
 
-  const renderBills = () => (
+  const renderBills = () => {
+  const selectedTotal = activeInvoices
+    .filter(inv => selectedInvoiceIds.includes(inv.invoiceId))
+    .reduce((sum, inv) => sum + inv.amount, 0);
+
+  return (
     <div className="view-container">
       <h2 className="page-title">Pay Bills</h2>
-      <form className="mt-4" onSubmit={handlePayBill}>
-        <div className="form-group">
-          <label className="form-label">Service Type</label>
-          <select className="form-input" value={billForm.type} onChange={e => setBillForm({ ...billForm, type: e.target.value })} required disabled={isFrozen}>
-            <option value="Electricity">Electricity</option>
-            <option value="Gas">Gas</option>
-            <option value="Internet">Internet</option>
-            <option value="Mobile Package">Mobile Package</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Provider Name</label>
-          <input className="form-input" placeholder="e.g. K-Electric, SSGC, Jazz" value={billForm.provider} onChange={e => setBillForm({ ...billForm, provider: e.target.value })} required disabled={isFrozen} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Consumer / Account Number</label>
-          <input className="form-input" placeholder="Enter Consumer Number" value={billForm.consumerNumber} onChange={e => setBillForm({ ...billForm, consumerNumber: e.target.value.replace(/[^0-9a-zA-Z-]/g, '') })} required disabled={isFrozen} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Amount (PKR)</label>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input className="form-input" type="text" placeholder="0" value={billForm.amount} onChange={e => setBillForm({ ...billForm, amount: e.target.value.replace(/[^0-9]/g, '') })} required disabled={isFrozen} readOnly />
-            <button type="button" className="secondary-button" onClick={handleFetchBillAmount} disabled={isFrozen}>
-              Fetch Bill
-            </button>
+
+      {/* ── STEP 1: Account Number Form ── */}
+      {!billFetched && (
+        <div className="mt-4">
+          <div className="form-group">
+            <label className="form-label">Bill Type</label>
+            <select
+              className="form-input"
+              value={billForm.billType}
+              onChange={e => setBillForm({ ...billForm, billType: e.target.value })}
+              disabled={isFrozen}
+            >
+              <option value="Electricity Bill">⚡ Electricity Bill</option>
+              <option value="Gas Bill">🔥 Gas Bill</option>
+              <option value="Internet Bill">🌐 Internet Bill</option>
+              <option value="Mobile Package">📱 Mobile Package</option>
+            </select>
           </div>
+          <div className="form-group">
+            <label className="form-label">Consumer / Account Number</label>
+                        <input
+              className="form-input"
+              placeholder="Enter 11-digit mobile number"
+              value={billForm.consumerNumber}
+              onChange={e => setBillForm({ ...billForm, consumerNumber: e.target.value.replace(/[^0-9]/g, '').slice(0, 11) })}
+              maxLength={11}
+              disabled={isFrozen}
+            />
+            <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
+              Enter the 11-digit mobile number linked to your utility account (e.g. 03001234567)
+            </p>
+          </div>
+          <button
+            className="primary-button"
+            onClick={handleFetchBillAmount}
+            disabled={loading || isFrozen || !billForm.consumerNumber}
+          >
+            {loading ? 'Fetching...' : '🔍 Fetch My Bills'}
+          </button>
         </div>
-        <button type="submit" className="primary-button" disabled={loading || isFrozen || !billForm.amount}>{loading ? 'Processing...' : 'Pay Bill'}</button>
-      </form>
+      )}
+
+      {/* ── STEP 2: Invoices List ── */}
+      {billFetched && activeInvoices.length > 0 && (
+        <div style={{ marginTop: '20px' }}>
+          {/* Back button */}
+          <button
+            type="button"
+            onClick={() => { setBillFetched(false); setActiveInvoices([]); setSelectedInvoiceIds([]); }}
+            style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: '#94a3b8', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', marginBottom: '15px', fontSize: '0.85rem' }}
+          >
+            Go Back
+          </button>
+
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '15px' }}>
+            Account: <strong style={{ color: '#f8fafc' }}>{billForm.consumerNumber}</strong> — {billForm.billType}
+          </p>
+
+          {/* Invoice Cards */}
+          {activeInvoices.map(inv => {
+            const isSelected = selectedInvoiceIds.includes(inv.invoiceId);
+            const isPaid = inv.status === 'PAID';
+            return (
+              <div
+                key={inv.invoiceId}
+                onClick={() => {
+                  if (isPaid) return;
+                  setSelectedInvoiceIds(prev =>
+                    prev.includes(inv.invoiceId)
+                      ? prev.filter(id => id !== inv.invoiceId)
+                      : [...prev, inv.invoiceId]
+                  );
+                }}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '16px 20px',
+                  marginBottom: '12px',
+                  borderRadius: '12px',
+                  border: isPaid
+                    ? '1px solid rgba(16,185,129,0.3)'
+                    : isSelected
+                      ? '1px solid #667eea'
+                      : '1px solid rgba(255,255,255,0.1)',
+                  background: isPaid
+                    ? 'rgba(16,185,129,0.05)'
+                    : isSelected
+                      ? 'rgba(102,126,234,0.15)'
+                      : 'rgba(255,255,255,0.05)',
+                  cursor: isPaid ? 'default' : 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {/* Checkbox */}
+                  {!isPaid && (
+                    <div style={{
+                      width: '20px', height: '20px', borderRadius: '5px',
+                      border: isSelected ? 'none' : '2px solid rgba(255,255,255,0.3)',
+                      background: isSelected ? '#667eea' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      {isSelected && <span style={{ color: 'white', fontSize: '12px' }}>✓</span>}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.95rem' }}>{inv.billMonth}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>Due: {inv.dueDate}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '1.05rem' }}>PKR {inv.amount.toLocaleString()}</div>
+                  <span style={{
+                    fontSize: '0.75rem', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                    background: isPaid ? 'rgba(16,185,129,0.2)' : 'rgba(234,179,8,0.2)',
+                    color: isPaid ? '#10b981' : '#eab308'
+                  }}>
+                    {isPaid ? '✅ PAID' : '⏳ UNPAID'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+                    {/* ── Total & Pay Button ── */}
+          {selectedInvoiceIds.length > 0 && (
+            <div style={{
+              marginTop: '20px', padding: '16px 20px', borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(102,126,234,0.2) 0%, rgba(118,75,162,0.2) 100%)',
+              border: '1px solid rgba(102,126,234,0.4)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <span style={{ color: '#94a3b8' }}>{selectedInvoiceIds.length} bill(s) selected</span>
+                <span style={{ fontWeight: 700, fontSize: '1.2rem', color: '#f8fafc' }}>
+                  Total: PKR {selectedTotal.toLocaleString()}
+                </span>
+              </div>
+              <button
+                className="primary-button"
+                onClick={() => setShowBillConfirm(true)} // 🌟 Open the confirmation modal first!
+                disabled={loading || isFrozen}
+                style={{ margin: 0 }}
+              >
+                {loading ? 'Processing...' : `💳 Pay PKR ${selectedTotal.toLocaleString()}`}
+              </button>
+            </div>
+          )}
+
+          {/* 🌟 BILL PAYMENT CONFIRMATION MODAL */}
+          {showBillConfirm && (
+            <div className="modal-overlay" onClick={() => setShowBillConfirm(false)}>
+              <div className="modal-card" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3>Confirm Bill Payment</h3>
+                  <button className="close-btn" onClick={() => setShowBillConfirm(false)}>×</button>
+                </div>
+                
+                <p style={{ marginBottom: '20px', color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>
+                  Are you sure you want to pay **PKR {selectedTotal.toLocaleString()}** for your selected **{billForm.billType}**?
+                </p>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    className="primary-button" 
+                    style={{ flex: 1, background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }} 
+                    onClick={() => {
+                      setShowBillConfirm(false);
+                      handlePayBill();
+                    }} 
+                    disabled={loading}
+                  >
+                    {loading ? 'Processing...' : 'Yes, Confirm Payment'}
+                  </button>
+                  <button 
+                    className="secondary-button" 
+                    style={{ flex: 1 }} 
+                    onClick={() => setShowBillConfirm(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+                  </div>
+      )}
     </div>
   );
+};
 
   const renderQR = () => (
     <div className="view-container">
@@ -1220,7 +1409,7 @@ export default function Dashboard({ userData, onLogout }) {
     <div className="dashboard-shell">
       {/* SIDEBAR */}
       <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="brand">Waxella.</div>
+        <div className="brand">WALLEXA</div>
         <nav className="nav-menu">
           <button className={`nav-item ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
             <Home size={20} /> Dashboard
@@ -1449,7 +1638,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* EXTERNAL BANK CONFIRMATION MODAL */}
+               {/* EXTERNAL BANK CONFIRMATION MODAL */}
         {showExternalConfirm && (
           <div className="modal-overlay" onClick={() => setShowExternalConfirm(false)}>
             <div className="modal-card" onClick={e => e.stopPropagation()}>

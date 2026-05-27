@@ -10,7 +10,9 @@ import ExternalBank from "../models/ExternalBank.js";
 import SplitRequest from "../models/SplitRequest.js";
 import { sendMoneyReceivedEmail, sendMoneySentEmail, sendFundsAddedEmail } from "../mailHelper.js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2023-10-16'
+});
 const router = express.Router();
 
 // Helper to Create Notification
@@ -502,7 +504,6 @@ router.post("/reject-split", protect, async (req, res) => {
         res.status(400).json({ message: error.message });
     }
 });
-
 // 12. SEND EXTERNAL BANK MONEY (Stripe Bank Token API)
 router.post("/send-external-money", protect, async (req, res) => {
     const session = await mongoose.startSession();
@@ -569,12 +570,16 @@ router.post("/send-external-money", protect, async (req, res) => {
             req.io
         );
 
-        // Email Confirmation
-        sendMoneySentEmail(
-            req.user.email,
-            `${bankName} (A/C: ••••${accountNumber.trim().slice(-4)})`,
-            Number(amount)
-        );
+        // Send Email Confirmation
+        try {
+            sendMoneySentEmail(
+                req.user.email,
+                `${bankName} (A/C: ••••${accountNumber.trim().slice(-4)})`,
+                Number(amount)
+            );
+        } catch (mailErr) {
+            console.error("Mail Error:", mailErr);
+        }
 
         res.json({
             message: "Bank Transfer Successful!",
@@ -589,5 +594,278 @@ router.post("/send-external-money", protect, async (req, res) => {
         session.endSession();
     }
 });
+// ============================================================
+// UTILITY BILLING — STRIPE SANDBOX INTEGRATION
+// ============================================================
 
+// BILL TYPES CONFIG (for seeding realistic invoice descriptions)
+const BILL_CONFIG = {
+  'Electricity Bill': {
+    providers: ['K-Electric', 'LESCO', 'IESCO'],
+    amounts: [4500, 6200, 7800, 3200, 5500]
+  },
+  'Gas Bill': {
+    providers: ['SSGC', 'SNGPL'],
+    amounts: [1200, 2100, 3400, 900, 1800]
+  },
+  'Internet Bill': {
+    providers: ['PTCL', 'Nayatel', 'StormFiber'],
+    amounts: [2500, 3000, 4000, 1500, 2000]
+  },
+  'Mobile Package': {
+    providers: ['Jazz', 'Telenor', 'Zong', 'Ufone'],
+    amounts: [500, 750, 1000, 1500, 300]
+  }
+};
+
+// Helper: months generate karne ke liye (Calculates the last 3 months)
+const getPastMonths = () => {
+  const months = [];
+  const now = new Date();
+  for (let i = 2; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      label: d.toLocaleString('default', { month: 'long', year: 'numeric' }),
+      dueDate: new Date(d.getFullYear(), d.getMonth() + 1, 10) // Due date is the 10th of next month
+    });
+  }
+  return months;
+};
+
+// Helper: Seed a single unpaid invoice on Stripe (Bulletproof Order)
+const seedUnpaidInvoice = async (stripe, customerId, billType, month, amount) => {
+  // 1. Create the Draft Invoice first so we have the invoice ID
+  const invoice = await stripe.invoices.create({
+    customer: customerId,
+    collection_method: 'send_invoice',
+    days_until_due: 10,
+    currency: 'pkr', // Explicitly specify PKR
+    metadata: {
+      billMonth: month.label,
+      dueDate: month.dueDate.toISOString(),
+      billType: billType
+    }
+  });
+
+  // 2. Create the Invoice Item and attach it DIRECTLY to the draft invoice we just created
+  await stripe.invoiceItems.create({
+    customer: customerId,
+    invoice: invoice.id, // 🌟 DIRECT ATTACHMENT: No race condition!
+    amount: amount * 100, // Convert PKR to cents
+    currency: 'pkr',
+    description: `${billType} — ${month.label}`
+  });
+
+  // 3. Finalize Invoice (Publish it so it becomes UNPAID / open)
+  await stripe.invoices.finalizeInvoice(invoice.id);
+};
+
+// ─────────────────────────────────────────────
+// ROUTE 1: Fetch Bills from Stripe
+// GET /api/wallet/fetch-bills?billType=Electricity Bill&consumerNumber=03001234567
+// ─────────────────────────────────────────────
+router.get('/fetch-bills', protect, async (req, res) => {
+  try {
+    const { billType, consumerNumber } = req.query;
+
+    if (!billType || !consumerNumber) {
+      return res.status(400).json({ message: 'Bill type and consumer number are required.' });
+    }
+
+    // 1. Strict Validation: Must be exactly 11-digit numeric value
+    if (!/^\d{11}$/.test(consumerNumber)) {
+      return res.status(400).json({ message: 'Invalid consumer number. Please enter a valid 11-digit mobile number.' });
+    }
+
+    if (!BILL_CONFIG[billType]) {
+      return res.status(400).json({ message: 'Invalid bill type selected.' });
+    }
+
+    // Search Stripe to see if this customer already exists
+    const searchResult = await stripe.customers.search({
+      query: `metadata['consumerNumber']:'${consumerNumber}' AND metadata['billType']:'${billType}'`,
+      limit: 1
+    });
+
+    let customerId;
+
+    if (searchResult.data.length > 0) {
+      // Customer already exists
+      customerId = searchResult.data[0].id;
+    } else {
+      // Create new customer on Stripe
+      const config = BILL_CONFIG[billType];
+      const providerName = config.providers[0];
+
+      const customer = await stripe.customers.create({
+        name: `${providerName} — Consumer ${consumerNumber}`,
+        email: req.user.email,
+        metadata: {
+          consumerNumber: consumerNumber,
+          billType: billType,
+          provider: providerName,
+          userId: req.user._id.toString()
+        }
+      });
+      customerId = customer.id;
+    }
+
+    // Fetch all invoices from Stripe for this customer
+    let invoices = await stripe.invoices.list({
+      customer: customerId,
+      limit: 20
+    });
+
+    const months = getPastMonths();
+    const config = BILL_CONFIG[billType];
+    const amounts = config.amounts;
+
+    // Check if March, April, and May invoices exist. If not, seed them as UNPAID.
+    let invoicesUpdated = false;
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i];
+      
+      const exists = invoices.data.some(
+        inv => inv.metadata?.billMonth === month.label && inv.metadata?.billType === billType
+      );
+
+      if (!exists) {
+        // 🌟 CHOOSE RANDOM AMOUNT FOR EVERY MONTH DYNAMICALLY!
+        const randomAmount = amounts[Math.floor(Math.random() * amounts.length)];
+        await seedUnpaidInvoice(stripe, customerId, billType, month, randomAmount);
+        invoicesUpdated = true;
+      }
+    }
+
+    // If we seeded any missing invoices, fetch the fresh list
+    if (invoicesUpdated) {
+      invoices = await stripe.invoices.list({
+        customer: customerId,
+        limit: 20
+      });
+    }
+
+    // Filter and return ONLY the 3 correct months' invoices in professional English
+    const formattedInvoices = [];
+    for (const month of months) {
+      const inv = invoices.data.find(
+        item => item.metadata?.billMonth === month.label && item.metadata?.billType === billType
+      );
+
+      if (inv) {
+        formattedInvoices.push({
+          invoiceId: inv.id,
+          billMonth: inv.metadata?.billMonth || month.label,
+          amount: inv.total / 100, // Convert cents to PKR
+          dueDate: inv.metadata?.dueDate
+            ? new Date(inv.metadata.dueDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'long', year: 'numeric' })
+            : 'N/A',
+          status: inv.status === 'paid' ? 'PAID' : 'UNPAID',
+          billType: billType
+        });
+      }
+    }
+
+    res.json({
+      customerId,
+      consumerNumber,
+      billType,
+      invoices: formattedInvoices
+    });
+
+  } catch (error) {
+    console.error('Fetch Bills Error:', error);
+    res.status(500).json({ message: error.message || 'Could not fetch bills from Stripe.' });
+  }
+});
+
+
+
+// ─────────────────────────────────────────────
+// ROUTE 2: Pay Selected Bills via Stripe
+// POST /api/wallet/pay-selected-bills
+// Body: { invoiceIds: ['in_xxx', 'in_yyy'] }
+// ─────────────────────────────────────────────
+router.post('/pay-selected-bills', protect, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { invoiceIds } = req.body;
+
+    if (!invoiceIds || invoiceIds.length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ message: 'No invoices selected for payment.' });
+    }
+
+    // Step 1: Stripe se har invoice ki details fetch karo
+    let totalAmount = 0;
+    const invoiceDetails = [];
+
+    for (const invoiceId of invoiceIds) {
+      const invoice = await stripe.invoices.retrieve(invoiceId);
+
+      if (invoice.status !== 'open') {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          message: `Invoice ${invoice.metadata?.billMonth || invoiceId} is already paid or invalid.`
+        });
+      }
+
+      totalAmount += invoice.amount_due / 100;
+      invoiceDetails.push(invoice);
+    }
+
+    // Step 2: User ka wallet check karo
+    const wallet = await Wallet.findOne({ userId: req.user._id }).session(session);
+    if (!wallet) throw new Error('Wallet not found.');
+    if (wallet.status === 'FROZEN') throw new Error('Your wallet is Frozen.');
+    if (wallet.balance < totalAmount) throw new Error(` Insufficient balance`);
+
+    // Step 3: Wallet se paise kato
+    wallet.balance -= totalAmount;
+    await wallet.save({ session });
+
+    // Step 4: Har invoice ke liye Stripe par paid mark karo
+    for (const invoice of invoiceDetails) {
+      await stripe.invoices.pay(invoice.id, { paid_out_of_band: true });
+
+      // Transaction history mein save karo
+      const tx = new Transaction({
+        senderWallet: wallet._id,
+        receiverWallet: wallet._id,
+        amount: invoice.amount_due / 100,
+        type: 'BILL_PAYMENT',
+        description: `Paid ${invoice.metadata?.billType || 'Utility'} — ${invoice.metadata?.billMonth || ''}`
+      });
+      await tx.save({ session });
+    }
+
+    // Step 5: Database transaction commit karo
+    await session.commitTransaction();
+    session.endSession();
+
+    // Step 6: Real-time notification bhejo
+    notifyUser(
+      req.user._id,
+      'Bills Paid ✅',
+      `PKR ${totalAmount.toLocaleString()} deducted for ${invoiceIds.length} bill(s).`,
+      'TRANSACTION',
+      req.io
+    );
+
+    res.json({
+      message: `Successfully paid ${invoiceIds.length} bill(s)!`,
+      totalPaid: totalAmount,
+      newBalance: wallet.balance
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Pay Bills Error:', error);
+    res.status(400).json({ message: error.message || 'Payment failed.' });
+  }
+});
 export default router;

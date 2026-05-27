@@ -6,7 +6,7 @@ export default function LandingPage({ onNavigate }) {
         <div className="landing-container">
             {/* 1. Navigation */}
             <nav className="landing-nav">
-                <div className="nav-logo">Wallexa.</div>
+                <div className="nav-logo">WALLEXA</div>
                 <div className="nav-links">
                     <button className="nav-btn" onClick={() => onNavigate('signin')}>Sign In</button>
                     <button className="nav-btn nav-btn-primary" onClick={() => onNavigate('signup')}>Get Started</button>
