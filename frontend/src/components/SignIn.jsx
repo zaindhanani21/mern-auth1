@@ -20,7 +20,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     setMessage("");
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/auth/signin", {
+      const res = await fetch("http://192.168.43.54:5000/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier, password })
@@ -42,7 +42,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/auth/forgot-password", {
+      const res = await fetch("http://192.168.43.54:5000/api/auth/forgot-password", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier: resetIdentifier })
       });
       const data = await res.json();
@@ -61,7 +61,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/auth/reset-password", {
+      const res = await fetch("http://192.168.43.54:5000/api/auth/reset-password", {
         method: "POST", headers: { "Content-Type": "application/json" }, 
         body: JSON.stringify({ userId: resetUserId, otpCode: resetOtp, newPassword })
       });

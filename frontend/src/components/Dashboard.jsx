@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { io } from "socket.io-client";
 import { QRCodeSVG } from 'qrcode.react';
-import { Home, Send, PlusCircle, History, Shield, LogOut, Bell, Menu, User, X, Clock, Check, Receipt, QrCode, Users } from 'lucide-react';
+import { Home, Send, PlusCircle, History, Shield, LogOut, Bell, Menu, User, X, Clock, Check, Receipt, QrCode, Users, Share2, Search, UserPlus, UserMinus, UserCheck, UserX } from 'lucide-react';
 import "./Css/ModernDashboard.css";
 
-const SOCKET_URL = "http://127.0.0.1:5000";
+const SOCKET_URL = "http://192.168.43.54:5000";
 const stripePromise = loadStripe("pk_test_51TSVFeDmC8zjQ7IGxqb8Hf2siIt1ixOpE1IpNevJup4eXC5JiLVU0LefrNAK3Kse9efMuAXscZXtiIVjrrrYKCQ200qQUcS87t");
 
 export default function Dashboard({ userData, onLogout }) {
@@ -23,9 +23,11 @@ export default function Dashboard({ userData, onLogout }) {
   const [balance, setBalance] = useState(0);
   const [isFrozen, setIsFrozen] = useState(false);
   const [txHistory, setTxHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [showFriendsDropdown, setShowFriendsDropdown] = useState(false);
   const [showBalance, setShowBalance] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
@@ -60,30 +62,125 @@ export default function Dashboard({ userData, onLogout }) {
   const [activeInvoices, setActiveInvoices] = useState([]);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
   const [billFetched, setBillFetched] = useState(false);
+  const [billOwnerName, setBillOwnerName] = useState("");
   const [showBillConfirm, setShowBillConfirm] = useState(false);
+    // 🟢 Social Onboarding States
+  const [socialStep, setSocialStep] = useState(1); // 1 = Activation Consent, 2 = Choose Username
+  const [usernameInput, setUsernameInput] = useState("");
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [isUsernameAvailable, setIsUsernameAvailable] = useState(false);
+  const [usernameChecking, setUsernameChecking] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+    // 🟢 Friends, Public Profile, & Social Feed States
+  const [friendSearchQuery, setFriendSearchQuery] = useState("");
+  const [friendSearchResult, setFriendSearchResult] = useState(null);
+  const [friendSearchLoading, setFriendSearchLoading] = useState(false);
+  const [friendSearchError, setFriendSearchError] = useState("");
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+  
+  // Public Profile and Posts
+  const [selectedPublicUser, setSelectedPublicUser] = useState(null); // Jab hum kisi user ki profile details screen kholenge
+  const [publicUserPosts, setPublicUserPosts] = useState([]);          // Viewed user ke posts display karne ke liye
+  const [homeFeedPosts, setHomeFeedPosts] = useState([]);              // Main timeline feed posts
+  const [postContent, setPostContent] = useState("");                  // Status update box content
+  const [feedLoading, setFeedLoading] = useState(false);               // Feed load spinner control
   const [splitForm, setSplitForm] = useState({ description: '', totalAmount: '', friends: [{ mobileNumber: '', name: '' }] });
   const [splits, setSplits] = useState([]);
+  // QR Scanner State
+  const [qrView, setQrView] = useState(null); // 'myqr' | 'scanner'
+  const [qrScanResult, setQrScanResult] = useState(null);
+  const [qrRecipient, setQrRecipient] = useState(null);
+  const [qrAmount, setQrAmount] = useState('');
+  const [showQrConfirm, setShowQrConfirm] = useState(false);
+
+    // 🟢 Auto-Reset All Forms & Modals when active tab changes (For Security & Premium UX)
+  useEffect(() => {
+    // 1. Reset Send Money Form
+    setSendForm({ recipient: '', amount: '', note: '', recipientName: '' });
+    setShowSendConfirm(false);
+
+    // 2. Reset Add Funds Form
+    setAddForm({ amount: '', method: 'card', cardNumber: '', expiry: '', cvc: '' });
+    setOtp("");
+
+    // 3. Reset Pay Bills Form
+    setBillForm({ billType: 'Electricity Bill', consumerNumber: '' });
+    setBillFetched(false);
+    setSelectedInvoiceIds([]);
+    setShowBillConfirm(false);
+
+    // 4. Reset Split Bills Form
+    setSplitForm({ description: '', totalAmount: '', friends: [{ mobileNumber: '', name: '' }] });
+
+    // 5. Reset QR Scanner States (Camera off dynamic reset)
+    try {
+      if (window._html5QrCode) {
+        window._html5QrCode.stop().then(() => {
+          window._html5QrCode = null;
+        }).catch(() => {});
+      }
+    } catch (e) {}
+    setQrScanResult(null);
+    setQrRecipient(null);
+    setQrAmount('');
+    setQrView(null);
+    setShowQrConfirm(false);
+    
+    // 6. Reset External Bank Confirm & Freeze Modal
+    setShowExternalConfirm(false);
+    setShowFreezeConfirm(false);
+  }, [activeTab]);
+  
 
   // --- INITIALIZATION ---
   const getToken = () => userData?.token || localStorage.getItem("userToken");
 
-  const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/dashboard", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/dashboard", {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (res.ok) {
         setBalance(data.balance);
         setIsFrozen(data.isFrozen);
-        setTxHistory(data.history);
       }
     } catch (e) { console.error(e); }
   }, []);
 
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/history", {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTxHistory(data.history);
+      }
+    } catch (e) { console.error(e); }
+    finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+    // 🟢 Create a ref for activeTab so that Socket listener can read its latest value safely
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  // 🟢 Trigger fetchHistory when user switches to 'history' tab
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    }
+  }, [activeTab, fetchHistory]);
+
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/notifications", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/notifications", {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -96,7 +193,7 @@ export default function Dashboard({ userData, onLogout }) {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/profile", {
+      const res = await fetch("http://192.168.43.54:5000/api/profile", {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -117,7 +214,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchSplits = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/get-splits", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/get-splits", {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -132,11 +229,299 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-  useEffect(() => {
+    // 🟢 Friends List fetch karna
+  const fetchFriends = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friends", {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFriendsList(data);
+      }
+    } catch (e) { console.error("Error fetching friends list", e); }
+  }, []);
+
+  // 🟢 Pending incoming friend requests fetch karna
+  const fetchFriendRequests = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friend-requests", {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFriendRequests(data);
+      }
+    } catch (e) { console.error("Error fetching friend requests", e); }
+  }, []);
+
+  // 🟢 Home Feed ke saare posts fetch karna (Latest first)
+  const fetchHomeFeed = useCallback(async () => {
+    if (!getToken()) return;
+    setFeedLoading(true);
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/posts/feed", {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setHomeFeedPosts(data);
+      }
+    } catch (e) { console.error("Error fetching home feed", e); }
+    finally { setFeedLoading(false); }
+  }, []);
+
+  // 🟢 Kisi specific searched user ke posts fetch karna public profile display ke liye
+  const fetchPublicUserPosts = async (userId) => {
+    try {
+      const res = await fetch(`http://192.168.43.54:5000/api/profile/posts/user/${userId}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPublicUserPosts(data);
+      }
+    } catch (e) { console.error("Error fetching user posts", e); }
+  };
+
+  // 🟢 Friends Search Bar submit handler
+  const handleFriendSearch = async (e) => {
+    e?.preventDefault();
+    if (!friendSearchQuery.trim()) return;
+    setFriendSearchLoading(true);
+    setFriendSearchError("");
+    setFriendSearchResult(null);
+    try {
+      const res = await fetch(`http://192.168.43.54:5000/api/profile/search?username=${encodeURIComponent(friendSearchQuery.trim())}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFriendSearchResult(data);
+      } else {
+        setFriendSearchError(data.message || "User not found.");
+      }
+    } catch {
+      setFriendSearchError("Network error while searching.");
+    } finally {
+      setFriendSearchLoading(false);
+    }
+  };
+
+    // 🟢 Send Friend Request (Updated with Instant UI Optimistic Update)
+  const handleSendFriendRequest = async (recipientId) => {
+    // 1. Back up current state in case of failure
+    const prevSearchResult = friendSearchResult;
+    const prevSelectedUser = selectedPublicUser;
+
+    // 2. Optimistic Update: Instantly change UI status to SENT (No Delay!)
+    if (friendSearchResult && friendSearchResult.id === recipientId) {
+      setFriendSearchResult({ ...friendSearchResult, status: 'SENT' });
+    }
+    if (selectedPublicUser && selectedPublicUser.id === recipientId) {
+      setSelectedPublicUser({ ...selectedPublicUser, status: 'SENT' });
+    }
+
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friend-request/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ recipientId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ title: "Request Sent", msg: "Friend request sent successfully!", type: "success" });
+        
+        // Finalize state with the real requestId from database
+        if (friendSearchResult && friendSearchResult.id === recipientId) {
+          setFriendSearchResult({ ...friendSearchResult, status: 'SENT', requestId: data.requestId });
+        }
+        if (selectedPublicUser && selectedPublicUser.id === recipientId) {
+          setSelectedPublicUser({ ...selectedPublicUser, status: 'SENT', requestId: data.requestId });
+        }
+      } else {
+        // Rollback to old state if request fails
+        setFriendSearchResult(prevSearchResult);
+        setSelectedPublicUser(prevSelectedUser);
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      // Rollback to old state if network fails
+      setFriendSearchResult(prevSearchResult);
+      setSelectedPublicUser(prevSelectedUser);
+      setToast({ title: "Error", msg: "Network error sending request.", type: "error" });
+    }
+  };
+
+  // 🟢 Accept Friend Request (Updated with Instant UI Optimistic Update)
+  const handleAcceptFriendRequest = async (requestId, senderName) => {
+    // 1. Back up current states
+    const prevSearchResult = friendSearchResult;
+    const prevSelectedUser = selectedPublicUser;
+    const prevRequests = friendRequests;
+
+    // Find sender ID dynamically
+    const requestObj = friendRequests.find(r => r._id === requestId);
+    const senderId = requestObj?.sender?._id || requestObj?.sender?.id;
+
+    // 2. Optimistic Update: Instantly set status to FRIENDS and hide from dropdown (No Delay!)
+    if (friendSearchResult && (friendSearchResult.requestId === requestId || friendSearchResult.id === senderId)) {
+      setFriendSearchResult({ ...friendSearchResult, status: 'FRIENDS' });
+    }
+    if (selectedPublicUser && (selectedPublicUser.requestId === requestId || selectedPublicUser.id === senderId)) {
+      setSelectedPublicUser({ ...selectedPublicUser, status: 'FRIENDS' });
+    }
+    setFriendRequests(prev => prev.filter(r => r._id !== requestId));
+
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friend-request/accept", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      if (res.ok) {
+        setToast({ title: "Accepted 🎉", msg: `You are now friends with ${senderName}!`, type: "success" });
+        fetchFriendRequests();
+        fetchFriends();
+        fetchHomeFeed();
+      } else {
+        // Rollback if server rejects request
+        setFriendSearchResult(prevSearchResult);
+        setSelectedPublicUser(prevSelectedUser);
+        setFriendRequests(prevRequests);
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      // Rollback on network failure
+      setFriendSearchResult(prevSearchResult);
+      setSelectedPublicUser(prevSelectedUser);
+      setFriendRequests(prevRequests);
+      setToast({ title: "Error", msg: "Network error accepting request.", type: "error" });
+    }
+  };
+
+  // 🟢 Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
+  const handleRejectFriendRequest = async (requestId) => {
+    // 1. Back up current states
+    const prevSearchResult = friendSearchResult;
+    const prevSelectedUser = selectedPublicUser;
+    const prevRequests = friendRequests;
+
+    // Find sender ID dynamically
+    const requestObj = friendRequests.find(r => r._id === requestId);
+    const senderId = requestObj?.sender?._id || requestObj?.sender?.id;
+
+    // 2. Optimistic Update: Instantly set status to NONE and hide from dropdown (No Delay!)
+    if (friendSearchResult && (friendSearchResult.requestId === requestId || friendSearchResult.id === senderId)) {
+      setFriendSearchResult({ ...friendSearchResult, status: 'NONE', requestId: null });
+    }
+    if (selectedPublicUser && (selectedPublicUser.requestId === requestId || selectedPublicUser.id === senderId)) {
+      setSelectedPublicUser({ ...selectedPublicUser, status: 'NONE', requestId: null });
+    }
+    setFriendRequests(prev => prev.filter(r => r._id !== requestId));
+
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friend-request/reject", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ requestId })
+      });
+      if (res.ok) {
+        setToast({ title: "Deleted", msg: "Friend request cancelled/removed.", type: "success" });
+        fetchFriendRequests();
+      } else {
+        // Rollback if server fails
+        setFriendSearchResult(prevSearchResult);
+        setSelectedPublicUser(prevSelectedUser);
+        setFriendRequests(prevRequests);
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      // Rollback on network failure
+      setFriendSearchResult(prevSearchResult);
+      setSelectedPublicUser(prevSelectedUser);
+      setFriendRequests(prevRequests);
+      setToast({ title: "Error", msg: "Network error deleting request.", type: "error" });
+    }
+ };  
+  // 🟢 Unfriend / Remove Friend
+  const handleRemoveFriend = async (friendId, friendName) => {
+    if (!window.confirm(`Are you sure you want to unfriend ${friendName}?`)) return;
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/friend/remove", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ friendId })
+      });
+      if (res.ok) {
+        setToast({ title: "Removed", msg: `Removed ${friendName} from friends.`, type: "success" });
+        fetchFriends();
+        fetchHomeFeed();
+        if (friendSearchResult && friendSearchResult.id === friendId) {
+          setFriendSearchResult({ ...friendSearchResult, status: 'NONE' });
+        }
+        if (selectedPublicUser && selectedPublicUser.id === friendId) {
+          setSelectedPublicUser({ ...selectedPublicUser, status: 'NONE' });
+        }
+      } else {
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error unfriending.", type: "error" });
+    }
+  };
+
+  // 🟢 Create status post handler
+  const handleCreatePost = async (e) => {
+    e.preventDefault();
+    if (!postContent.trim()) return;
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/posts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ content: postContent })
+      });
+      if (res.ok) {
+        setToast({ title: "Post Shared", msg: "Your status has been posted!", type: "success" });
+        setPostContent("");
+        fetchHomeFeed();
+      } else {
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error sharing post.", type: "error" });
+    }
+  };
+
+    useEffect(() => {
     fetchData();
     fetchNotifications();
     fetchProfile();
     fetchSplits();
+    fetchFriends();          // Friends list fetch karna on mount
+    fetchFriendRequests();   // Friend requests list fetch karna on mount
+    fetchHomeFeed();         // Home status posts feed fetch karna on mount
 
     const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
@@ -152,10 +537,35 @@ export default function Dashboard({ userData, onLogout }) {
       fetchData();
       fetchSplits();
       fetchNotifications();
+      if (activeTabRef.current === 'history') {
+        fetchHistory();
+      }
+    });
+
+    // 👤 Real-time Friend Request Received
+    newSocket.on("friend_request_received", (data) => {
+      setToast({ 
+        title: "New Friend Request 👤", 
+        msg: `${data.sender.firstName} sent you a friend request!`, 
+        type: 'info' 
+      });
+      fetchFriendRequests(); // Refresh requests box
+    });
+
+    // 🎉 Real-time Friend Request Accepted
+    newSocket.on("friend_request_accepted", (data) => {
+      setToast({ 
+        title: "Request Accepted 🎉", 
+        msg: `${data.friend.firstName} accepted your friend request!`, 
+        type: 'success' 
+      });
+      fetchFriends();   // Refresh friends list
+      fetchHomeFeed();  // Refresh feed posts (since friends' posts should now appear)
     });
 
     return () => newSocket.close();
-  }, [userId, fetchData, fetchNotifications, fetchProfile, fetchSplits]);
+  }, [userId, fetchData, fetchNotifications, fetchProfile, fetchSplits, fetchHistory, fetchFriends, fetchFriendRequests, fetchHomeFeed]);
+
 
   useEffect(() => {
     if (toast) {
@@ -167,7 +577,7 @@ export default function Dashboard({ userData, onLogout }) {
   // --- NOTIFICATION ACTIONS ---
   const markAsRead = async (notificationId) => {
     try {
-      await fetch("http://127.0.0.1:5000/api/wallet/mark-notification-read", {
+      await fetch("http://192.168.43.54:5000/api/wallet/mark-notification-read", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ notificationId })
@@ -182,7 +592,7 @@ export default function Dashboard({ userData, onLogout }) {
     setShowExternalConfirm(false);
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/send-external-money", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/send-external-money", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -231,7 +641,7 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/profile/mobile/${sendForm.recipient}`, {
+      const res = await fetch(`http://192.168.43.54:5000/api/profile/mobile/${sendForm.recipient}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -254,7 +664,7 @@ export default function Dashboard({ userData, onLogout }) {
          return setToast({ title: "Error", msg: "Invalid Recipient Mobile Number", type: "error" });
       }
       try {
-        const res = await fetch(`http://127.0.0.1:5000/api/profile/mobile/${sendForm.recipient}`, {
+        const res = await fetch(`http://192.168.43.54:5000/api/profile/mobile/${sendForm.recipient}`, {
           headers: { Authorization: `Bearer ${getToken()}` }
         });
         const data = await res.json();
@@ -278,12 +688,14 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     setShowSendConfirm(false);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/send-money", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/send-money", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ recipientMobile: sendForm.recipient, amount: Number(sendForm.amount) })
       });
       const data = await res.json();
       if (res.ok) {
+        // 💸 Instantly update balance on screen (Real-time Feel!)
+        setBalance(prev => prev - Number(sendForm.amount));
         setToast({ title: "Success", msg: "Money Sent!", type: "success" });
         setSendForm({ recipient: '', amount: '', note: '', recipientName: '' });
         fetchData();
@@ -317,7 +729,7 @@ export default function Dashboard({ userData, onLogout }) {
         return;
       }
 
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/add-money", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/add-money", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
@@ -341,14 +753,14 @@ export default function Dashboard({ userData, onLogout }) {
 
   const requestFreeze = async () => {
     try {
-      await fetch("http://127.0.0.1:5000/api/auth/send-freeze-otp", { method: "POST", headers: { Authorization: `Bearer ${getToken()}` } });
+      await fetch("http://192.168.43.54:5000/api/auth/send-freeze-otp", { method: "POST", headers: { Authorization: `Bearer ${getToken()}` } });
       setShowOtpModal(true);
     } catch { setToast({ title: "Error", msg: "Could not send OTP", type: "error" }); }
   };
 
   const confirmFreeze = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/verify-freeze-otp", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/verify-freeze-otp", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ otp })
       });
@@ -369,7 +781,7 @@ export default function Dashboard({ userData, onLogout }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/profile/update", {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/update", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify(profileForm)
@@ -398,7 +810,7 @@ export default function Dashboard({ userData, onLogout }) {
     reader.onloadend = async () => {
       const base64 = reader.result;
       try {
-        const res = await fetch("http://127.0.0.1:5000/api/profile/upload-picture", {
+        const res = await fetch("http://192.168.43.54:5000/api/profile/upload-picture", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ profilePicture: base64 })
@@ -415,13 +827,53 @@ export default function Dashboard({ userData, onLogout }) {
     reader.readAsDataURL(file);
   };
 
+    // --- QR SCANNER SEND HANDLER ---
+  const handleQrSend = async () => {
+    if (!qrScanResult || !qrAmount || Number(qrAmount) <= 0) return;
+    setLoading(true);
+    setShowQrConfirm(false);
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/send-money", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ recipientMobile: qrScanResult, amount: Number(qrAmount) })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // 💸 Instantly update balance on screen (Real-time Feel!)
+        setBalance(prev => prev - Number(qrAmount));
+
+        setToast({
+          title: "Transfer Successful ✅",
+          msg: `PKR ${qrAmount} sent to ${qrRecipient?.firstName} ${qrRecipient?.lastName}`,
+          type: "success"
+        });
+        setQrScanResult(null);
+        setQrRecipient(null);
+        setQrAmount('');
+        setQrView(null); // 🟢 Wapas selection screen par redirect karega
+        fetchData();
+        fetchNotifications();
+      } else {
+        setToast({ title: "Transfer Failed ❌", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error. Please try again.", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // --- NEW FEATURE ACTIONS ---
   const handlePayBill = async () => {
   if (isFrozen) return setToast({ title: "Wallet Frozen", msg: "Your wallet is currently frozen. Please unfreeze to proceed.", type: "error" });
   if (selectedInvoiceIds.length === 0) return setToast({ title: "No Bills Selected", msg: "Please select at least one bill to proceed with payment.", type: "error" });
   setLoading(true);
   try {
-    const res = await fetch("http://127.0.0.1:5000/api/wallet/pay-selected-bills", {
+    const res = await fetch("http://192.168.43.54:5000/api/wallet/pay-selected-bills", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
       body: JSON.stringify({ invoiceIds: selectedInvoiceIds })
@@ -443,31 +895,126 @@ export default function Dashboard({ userData, onLogout }) {
 };
 
     const handleFetchBillAmount = async () => {
-  if (!billForm.consumerNumber || billForm.consumerNumber.length !== 11) {
-    return setToast({ title: "Invalid Account Number", msg: "Please enter a valid 11-digit mobile number linked to your utility account.", type: "error" });
-  }
-  setLoading(true);
-  try {
-    const res = await fetch(
-      `http://127.0.0.1:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`,
-      { headers: { Authorization: `Bearer ${getToken()}` } }
-    );
-    const data = await res.json();
-    if (res.ok) {
-      setActiveInvoices(data.invoices);
-      setSelectedInvoiceIds([]);
-      setBillFetched(true);
-      setToast({ title: "Bills Retrieved", msg: `${data.invoices.length} bill(s) found for account ${billForm.consumerNumber}.`, type: "success" });
-    } else {
-      setToast({ title: "Error", msg: data.message, type: "error" });
+    if (!billForm.consumerNumber || billForm.consumerNumber.length !== 11) {
+      return setToast({ title: "Invalid Account Number", msg: "Please enter a valid 11-digit mobile number linked to your utility account.", type: "error" });
     }
-  } catch {
-    setToast({ title: "Error", msg: "Network error", type: "error" });
-  } finally {
-    setLoading(false);
-  }
-};
+    setLoading(true);
+    try {
+      const res = await fetch(
+        // 🌟 Niche 'XXXX' ki jagah apna IP (jaise localhost ya network IP) likhein
+        `http://192.168.43.54:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`, // Add your IP here
+        { headers: { Authorization: `Bearer ${getToken()}` } }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setActiveInvoices(data.invoices);
+        setBillOwnerName(data.ownerName); // 🟢 Verified name ko humne memory notebook mein save kar liya!
+        setSelectedInvoiceIds([]);
+        setBillFetched(true);
+        setToast({ title: "Bills Retrieved", msg: `${data.invoices.length} bill(s) found for account ${billForm.consumerNumber}.`, type: "success" });
+      } else {
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+    // 🟢 Live Username verification & cleaning
+  const handleUsernameChange = async (val) => {
+    // Semicolons aur special characters ko type karte waqt hi automatically strip (delete) kar dena!
+    const cleanVal = val.trim().toLowerCase().replace(/[^a-z0-9_.]/g, ''); 
+    setUsernameInput(cleanVal);
+    setIsUsernameAvailable(false);
+    setUsernameError("");
 
+    if (cleanVal.length < 4) {
+      setUsernameError("Username must be at least 4 characters long.");
+      return;
+    }
+    if (cleanVal.length > 15) {
+      setUsernameError("Username cannot exceed 15 characters.");
+      return;
+    }
+
+    // Live backend call to check username availability
+    setUsernameChecking(true);
+    try {
+      const res = await fetch(`http://192.168.43.54:5000/api/profile/check-username/${cleanVal}`, { // 🌟 Niche IP update rakhiyega
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsUsernameAvailable(true);
+      } else {
+        setUsernameError(data.message);
+      }
+    } catch {
+      setUsernameError("Network error while checking username.");
+    } finally {
+      setUsernameChecking(false);
+    }
+  };
+
+  // 🟢 Finalize & Save username to database
+   // 🟢 Finalize & Save username & displayName to database
+  const handleSaveUsername = async (e) => {
+    e.preventDefault();
+    if (!isUsernameAvailable) return;
+    setLoading(true);
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/set-username", { // 🌟 Niche IP update rakhiyega
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}` 
+        },
+        body: JSON.stringify({ username: usernameInput, displayName: displayNameInput }) // 🟢 Send displayName too
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Update local React state taake screen directly main feed par redirect ho jaye!
+        setProfile(prev => ({ ...prev, username: data.username }));
+        setToast({ title: "Success", msg: "Social Feed activated successfully!", type: "success" });
+      } else {
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🟢 Deactivate Social Profile (Delete username & displayName)
+  const confirmDeactivateSocial = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("http://192.168.43.54:5000/api/profile/deactivate-social", { 
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (res.ok) {
+        // Local React state ko reset karna taake screen instantly onboarding par chali jaye!
+        setProfile(prev => ({ ...prev, username: null }));
+        setSocialStep(1); // Consent screen (step 1) par reset karna
+        setUsernameInput(""); // Type kiya hua purana username clear karna
+        setDisplayNameInput(""); // 🟢 Reset display name too
+        setIsUsernameAvailable(false);
+        setToast({ title: "Profile Deleted", msg: "Your Wallexa Social Profile has been deactivated successfully.", type: "success" });
+      } else {
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   const fetchFriendName = async (index, mobileNumber) => {
     if (!mobileNumber || mobileNumber.length < 10) {
        const newFriends = [...splitForm.friends];
@@ -476,7 +1023,7 @@ export default function Dashboard({ userData, onLogout }) {
        return;
     }
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/profile/mobile/${mobileNumber}`, {
+      const res = await fetch(`http://192.168.43.54:5000/api/profile/mobile/${mobileNumber}`, {
         headers: { Authorization: `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -515,7 +1062,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/request-split", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/request-split", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify(payload)
       });
@@ -535,7 +1082,7 @@ export default function Dashboard({ userData, onLogout }) {
     if (isFrozen) return setToast({ title: "Error", msg: "Wallet is Frozen", type: "error" });
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/accept-split", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/accept-split", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ splitId })
       });
@@ -555,7 +1102,7 @@ export default function Dashboard({ userData, onLogout }) {
   const handleRejectSplit = async (splitId) => {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/wallet/reject-split", {
+      const res = await fetch("http://192.168.43.54:5000/api/wallet/reject-split", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ splitId })
       });
@@ -830,45 +1377,673 @@ export default function Dashboard({ userData, onLogout }) {
     </div>
   );
 
+      const renderSocial = () => {
+    // 1. Loading screen agar profile fetch nahi hui abhi tak
+    if (!profile) {
+      return (
+        <div className="view-container" style={{ textAlign: 'center', padding: '50px' }}>
+          <p style={{ color: '#94a3b8' }}>Loading profile details...</p>
+        </div>
+      ); 
+    }
+
+    // 2. ONBOARDING FLOW: Agar user ka username register nahi hai (First-Time Visit)
+    if (!profile.username) {
+      return (
+        <div className="view-container">
+          <h2 className="page-title">Social Feed Setup</h2>
+          
+          <div style={{ 
+            maxWidth: '500px', 
+            margin: '30px auto 0 auto', 
+            background: 'var(--bg-card)', 
+            padding: '30px', 
+            borderRadius: '24px', 
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+            textAlign: 'center'
+          }}>
+            {socialStep === 1 ? (
+              <div>
+                <Share2 size={64} style={{ marginBottom: '20px', color: '#6366f1' }} />
+                <h3 style={{ fontSize: '1.4rem', color: '#f8fafc', marginBottom: '15px' }}>Activate Wallexa Social</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '25px' }}>
+                  Connect with friends securely! By activating social feed, you can search friends using usernames, share transaction receipts with hidden amounts, and react to payments.
+                </p>
+                <button 
+                  className="primary-button" 
+                  onClick={() => setSocialStep(2)}
+                >
+                  🚀 Activate Social Feed
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveUsername}>
+                <h3 style={{ fontSize: '1.4rem', color: '#f8fafc', marginBottom: '10px' }}>Choose a Username</h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '20px', lineHeight: '1.5' }}>
+                  Your mobile number and email will remain private. Friends will search you using this unique username.
+                </p>
+
+                                {/* 🟢 Display Name Input */}
+                <div className="form-group" style={{ marginBottom: '15px' }}>
+                  <input 
+                    className="form-input" 
+                    placeholder="Display Name (e.g. Zain Ali)" 
+                    value={displayNameInput}
+                    onChange={(e) => setDisplayNameInput(e.target.value)}
+                    style={{ fontSize: '1.05rem', padding: '12px 15px' }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '20px', position: 'relative' }}>
+                  <div style={{ position: 'absolute', left: '15px', top: '12px', color: '#6366f1', fontWeight: 700, fontSize: '1.1rem' }}>@</div>
+                  <input 
+                    className="form-input" 
+                    placeholder="e.g. John" 
+                    value={usernameInput}
+                    onChange={(e) => handleUsernameChange(e.target.value)}
+                    style={{ paddingLeft: '35px', fontSize: '1.05rem', letterSpacing: '0.5px' }}
+                    required
+                  />
+                  
+                  <div style={{ textAlign: 'left', marginTop: '8px', fontSize: '0.82rem' }}>
+                    {usernameChecking && <span style={{ color: '#94a3b8' }}>Checking availability...</span>}
+                    {isUsernameAvailable && <span style={{ color: '#10b981', fontWeight: 600 }}>✓ Username is available!</span>}
+                    {usernameError && <span style={{ color: '#ef4444' }}>✗ {usernameError}</span>}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="submit" 
+                    className="primary-button" 
+                    disabled={loading || !isUsernameAvailable}
+                    style={{ flex: 2 }}
+                  >
+                    {loading ? 'Activating...' : 'Confirm & Save'}
+                  </button>
+                  <button 
+                    type="button" 
+                    className="secondary-button" 
+                    onClick={() => setSocialStep(1)}
+                    style={{ flex: 1 }}
+                  >
+                    Back
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 3. PUBLIC PROFILE SCREEN: Jab selectedPublicUser set ho (User clicks on a searched card or friend)
+    if (selectedPublicUser) {
+      return (
+        <div className="view-container">
+          {/* Header with Back button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
+            <button 
+              className="secondary-button" 
+              style={{ width: 'auto', padding: '8px 16px', borderRadius: '10px' }}
+              onClick={() => { 
+                setSelectedPublicUser(null); 
+                setPublicUserPosts([]); 
+              }}
+            >
+              ← Back to Feed
+            </button>
+            <h2 className="page-title" style={{ margin: 0 }}>User Profile</h2>
+          </div>
+
+          {/* Profile Card Banner */}
+          <div style={{ 
+            background: 'var(--bg-card)', 
+            padding: '30px', 
+            borderRadius: '24px', 
+            border: '1px solid rgba(255, 255, 255, 0.05)',
+            textAlign: 'center',
+            marginBottom: '30px'
+          }}>
+            {/* User Avatar */}
+            <div style={{ 
+              width: '90px', 
+              height: '90px', 
+              borderRadius: '50%', 
+              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              fontSize: '2rem', 
+              fontWeight: 700, 
+              color: 'white',
+              margin: '0 auto 15px auto',
+              boxShadow: '0 8px 24px rgba(99, 102, 241, 0.3)'
+            }}>
+              {selectedPublicUser.profilePicture ? (
+                <img src={selectedPublicUser.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              ) : (
+                selectedPublicUser.firstName.charAt(0).toUpperCase()
+              )}
+            </div>
+
+            {/* User Name & Handle */}
+            <h3 style={{ fontSize: '1.5rem', color: '#f8fafc', margin: '0 0 5px 0' }}>
+              {selectedPublicUser.firstName} {selectedPublicUser.lastName}
+            </h3>
+            <p style={{ color: '#6366f1', fontWeight: 600, fontSize: '1rem', margin: '0 0 20px 0' }}>
+              @{selectedPublicUser.username}
+            </p>
+
+            {/* Dynamic Friendship Status Action Button */}
+            <div style={{ maxWidth: '250px', margin: '0 auto' }}>
+              {selectedPublicUser.status === 'NONE' && (
+                <button 
+                  className="primary-button" 
+                  onClick={() => handleSendFriendRequest(selectedPublicUser.id)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <UserPlus size={18} /> Add Friend
+                </button>
+              )}
+              {selectedPublicUser.status === 'SENT' && (
+                <button 
+                  className="secondary-button" 
+                  disabled
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', color: '#94a3b8' }}
+                >
+                  <Clock size={18} /> Pending Request
+                </button>
+              )}
+              {selectedPublicUser.status === 'RECEIVED' && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    className="primary-button" 
+                    style={{ background: '#10b981', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                    onClick={() => handleAcceptFriendRequest(selectedPublicUser.requestId, selectedPublicUser.firstName)}
+                  >
+                    <Check size={16} /> Accept
+                  </button>
+                  <button 
+                    className="secondary-button" 
+                    style={{ background: '#ef4444', color: 'white', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}
+                    onClick={() => handleRejectFriendRequest(selectedPublicUser.requestId)}
+                  >
+                    <X size={16} /> Reject
+                  </button>
+                </div>
+              )}
+              {selectedPublicUser.status === 'FRIENDS' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <span style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '6px', 
+                    color: '#10b981', 
+                    fontWeight: 600,
+                    padding: '8px',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    borderRadius: '10px'
+                  }}>
+                    <UserCheck size={18} /> Friends
+                  </span>
+                  <button 
+                    className="secondary-button" 
+                    style={{ border: '1px solid rgba(239, 68, 68, 0.4)', color: '#ef4444' }}
+                    onClick={() => handleRemoveFriend(selectedPublicUser.id, selectedPublicUser.firstName)}
+                  >
+                    Unfriend
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* User Posts List Section */}
+          <div>
+            <h4 style={{ color: '#f8fafc', fontSize: '1.2rem', marginBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '10px' }}>
+              Posts by @{selectedPublicUser.username}
+            </h4>
+
+            {publicUserPosts.length === 0 ? (
+              <p style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
+                No posts shared by this user yet.
+              </p>
+            ) : (
+              publicUserPosts.map(post => (
+                <div key={post._id} style={{ 
+                  background: 'var(--bg-card)', 
+                  padding: '20px', 
+                  borderRadius: '16px', 
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  marginBottom: '15px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                    <div style={{ 
+                      width: '40px', 
+                      height: '40px', 
+                      borderRadius: '50%', 
+                      background: '#6366f1', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      fontWeight: 600, 
+                      color: 'white' 
+                    }}>
+                      {post.author.profilePicture ? (
+                        <img src={post.author.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        post.author.firstName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600 }}>{post.author.firstName} {post.author.lastName}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                        {new Date(post.createdAt).toLocaleDateString()} {new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                  <p style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                    {post.content}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 4. MAIN SOCIAL FEED: Default view containing Search, Post Box, Friends & Feed Timeline
+    return (
+      <div className="view-container">
+        {/* Header jisme Left par title aur Right par Deactivate button hoga */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 className="page-title" style={{ margin: 0 }}>Social Feed</h2>
+          <button 
+            onClick={() => setShowDeactivateConfirm(true)}
+            style={{
+              background: 'none',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#ef4444',
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            🗑️ Deactivate Social
+          </button>
+        </div>
+
+        {/* 🔍 Search Bar Section */}
+        <div style={{ marginBottom: '20px' }}>
+          <form onSubmit={handleFriendSearch} style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <Search size={18} style={{ position: 'absolute', left: '15px', top: '13px', color: '#94a3b8' }} />
+              <input 
+                className="form-input" 
+                placeholder="Search friends by username (e.g. John)..." 
+                value={friendSearchQuery}
+                onChange={e => setFriendSearchQuery(e.target.value)}
+                style={{ paddingLeft: '45px' }}
+              />
+            </div>
+            <button className="primary-button" style={{ width: 'auto', padding: '0 25px' }} type="submit" disabled={friendSearchLoading}>
+              {friendSearchLoading ? 'Searching...' : 'Search'}
+            </button>
+          </form>
+
+          {/* Search Error Indicator */}
+          {friendSearchError && (
+            <p style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '8px', marginLeft: '5px' }}>
+              ✗ {friendSearchError}
+            </p>
+          )}
+
+          {/* Searched User Card (Result) */}
+          {friendSearchResult && (
+            <div style={{ 
+              background: 'rgba(99, 102, 241, 0.05)', 
+              border: '1px solid rgba(99, 102, 241, 0.2)', 
+              padding: '15px 20px', 
+              borderRadius: '16px', 
+              marginTop: '15px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ 
+                  width: '45px', 
+                  height: '45px', 
+                  borderRadius: '50%', 
+                  background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontWeight: 700, 
+                  color: 'white' 
+                }}>
+                  {friendSearchResult.profilePicture ? (
+                    <img src={friendSearchResult.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                  ) : (
+                    friendSearchResult.firstName.charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <div style={{ color: '#f8fafc', fontWeight: 600 }}>{friendSearchResult.firstName} {friendSearchResult.lastName}</div>
+                  <div style={{ color: '#6366f1', fontSize: '0.85rem', fontWeight: 600 }}>@{friendSearchResult.username}</div>
+                </div>
+              </div>
+              
+              {/* Click triggers detail profile & fetches their posts */}
+              <button 
+                className="primary-button" 
+                style={{ width: 'auto', padding: '8px 18px', fontSize: '0.85rem', background: '#6366f1' }}
+                onClick={() => {
+                  setSelectedPublicUser(friendSearchResult);
+                  fetchPublicUserPosts(friendSearchResult.id);
+                  setFriendSearchResult(null);
+                  setFriendSearchQuery("");
+                }}
+              >
+                View Profile
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 📬 Incoming Friend Requests List Section */}
+        {friendRequests.length > 0 && (
+          <div style={{ 
+            background: 'rgba(245, 158, 11, 0.05)', 
+            border: '1px solid rgba(245, 158, 11, 0.2)', 
+            padding: '20px', 
+            borderRadius: '16px', 
+            marginBottom: '20px'
+          }}>
+            <h4 style={{ color: '#f59e0b', margin: '0 0 15px 0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              👤 Incoming Friend Requests ({friendRequests.length})
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {friendRequests.map(req => (
+                <div key={req._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)', padding: '10px 15px', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyRef: 'center', justifyContent: 'center', fontWeight: 600, color: 'white', fontSize: '0.9rem' }}>
+                      {req.sender.profilePicture ? (
+                        <img src={req.sender.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        req.sender.firstName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.9rem' }}>{req.sender.firstName} {req.sender.lastName}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>@{req.sender.username}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      className="primary-button" 
+                      style={{ width: 'auto', padding: '6px 12px', background: '#10b981', fontSize: '0.8rem' }}
+                      onClick={() => handleAcceptFriendRequest(req._id, req.sender.firstName)}
+                    >
+                      Accept
+                    </button>
+                    <button 
+                      className="secondary-button" 
+                      style={{ width: 'auto', padding: '6px 12px', background: '#ef4444', color: 'white', fontSize: '0.8rem' }}
+                      onClick={() => handleRejectFriendRequest(req._id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ✍️ Post Creation Card (Active/Enabled!) */}
+        <div style={{ 
+          background: 'var(--bg-card)', 
+          padding: '20px', 
+          borderRadius: '16px', 
+          border: '1px solid rgba(255, 255, 255, 0.05)',
+          marginBottom: '20px',
+          boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+        }}>
+          <h4 style={{ color: '#f8fafc', marginBottom: '12px' }}>What's on your mind, @{profile.username}?</h4>
+          <form onSubmit={handleCreatePost} style={{ display: 'flex', gap: '10px' }}>
+            <input 
+              className="form-input" 
+              placeholder="Share updates with your friends..." 
+              value={postContent}
+              onChange={e => setPostContent(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button className="primary-button" style={{ width: 'auto', padding: '0 25px' }} type="submit" disabled={!postContent.trim()}>
+              Post
+            </button>
+          </form>
+        </div>
+
+        {/* 👥 My Friends List Section */}
+        {friendsList.length > 0 && (
+          <div style={{ marginBottom: '25px' }}>
+            <h4 style={{ color: '#f8fafc', fontSize: '1.05rem', marginBottom: '12px' }}>My Friends ({friendsList.length})</h4>
+            <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '10px' }}>
+              {friendsList.map(friend => (
+                <div 
+                  key={friend._id}
+                  onClick={() => {
+                    setSelectedPublicUser({
+                      id: friend._id,
+                      firstName: friend.firstName,
+                      lastName: friend.lastName,
+                      username: friend.username,
+                      profilePicture: friend.profilePicture,
+                      status: 'FRIENDS'
+                    });
+                    fetchPublicUserPosts(friend._id);
+                  }}
+                  style={{ 
+                    background: 'var(--bg-card)',
+                    border: '1px solid rgba(255,255,255,0.03)',
+                    padding: '12px 18px',
+                    borderRadius: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    minWidth: '100px',
+                    textAlign: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                  className="friend-avatar-card"
+                >
+                  <div style={{ 
+                    width: '40px', 
+                    height: '40px', 
+                    borderRadius: '50%', 
+                    background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    fontWeight: 700, 
+                    color: 'white',
+                    marginBottom: '8px'
+                  }}>
+                    {friend.profilePicture ? (
+                      <img src={friend.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      friend.firstName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div style={{ color: '#cbd5e1', fontWeight: 600, fontSize: '0.8rem', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', width: '80px' }}>
+                    {friend.firstName}
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+                    @{friend.username}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 📱 Social Feed Timeline Posts (Loaded dynamically) */}
+        <div>
+          <h4 style={{ color: '#f8fafc', fontSize: '1.1rem', marginBottom: '15px' }}>Recent Updates</h4>
+          
+          {feedLoading ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}>
+              <p style={{ color: '#94a3b8' }}>🔄 Refreshing feed...</p>
+            </div>
+          ) : homeFeedPosts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '45px', color: '#94a3b8', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <Users size={40} style={{ color: '#6366f1', marginBottom: '15px' }} />
+              <p style={{ margin: 0, fontSize: '0.95rem' }}>No posts to display. Search friends to grow your network!</p>
+            </div>
+          ) : (
+            homeFeedPosts.map(post => (
+              <div key={post._id} style={{ 
+                background: 'var(--bg-card)', 
+                padding: '20px', 
+                borderRadius: '16px', 
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                marginBottom: '15px',
+                boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  {/* Click avatar to open profile */}
+                  <div 
+                    onClick={() => {
+                      const isMe = post.author._id === profile.id;
+                      setSelectedPublicUser({
+                        id: post.author._id,
+                        firstName: post.author.firstName,
+                        lastName: post.author.lastName,
+                        username: post.author.username,
+                        profilePicture: post.author.profilePicture,
+                        status: isMe ? 'SELF' : (friendsList.some(f => f._id === post.author._id) ? 'FRIENDS' : 'NONE')
+                      });
+                      fetchPublicUserPosts(post.author._id);
+                    }}
+                    style={{ 
+                      width: '40px', 
+                      height: '40px', 
+                      borderRadius: '50%', 
+                      background: '#6366f1', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      fontWeight: 600, 
+                      color: 'white',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {post.author.profilePicture ? (
+                      <img src={post.author.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      post.author.firstName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <div 
+                      onClick={() => {
+                        const isMe = post.author._id === profile.id;
+                        setSelectedPublicUser({
+                          id: post.author._id,
+                          firstName: post.author.firstName,
+                          lastName: post.author.lastName,
+                          username: post.author.username,
+                          profilePicture: post.author.profilePicture,
+                          status: isMe ? 'SELF' : (friendsList.some(f => f._id === post.author._id) ? 'FRIENDS' : 'NONE')
+                        });
+                        fetchPublicUserPosts(post.author._id);
+                      }}
+                      style={{ color: '#f8fafc', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {post.author.firstName} {post.author.lastName}
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                      @{post.author.username} • {new Date(post.createdAt).toLocaleDateString()} {new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+                <p style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: '1.5', margin: 0 }}>
+                  {post.content}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderHistory = () => (
     <div className="view-container">
       <h2 className="page-title">Transaction History</h2>
       <div className="history-section" style={{ marginTop: '20px' }}>
-        {txHistory.length === 0 ? <p style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>No transactions yet.</p> : txHistory.map(tx => (
-          <div key={tx._id} className="tx-row" style={{ cursor: 'pointer', position: 'relative' }}>
-            <div onClick={() => { setSelectedTx(tx); setShowTxDetail(true); }} style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '15px' }}>
-              <div className={`tx-icon ${tx.type === 'ADD_MONEY' ? 'add' : (tx.isSender ? 'send' : 'receive')}`}>
-                {tx.type === 'ADD_MONEY' ? <PlusCircle size={20} /> : (tx.isSender ? <Send size={20} /> : <ArrowDownCircle size={20} />)}
-              </div>
-              <div className="tx-info">
-                <div className="tx-party" style={{ fontWeight: 600, color: '#f8fafc' }}>{tx.type === 'BILL_PAYMENT' ? tx.description : tx.otherPartyName}</div>
-                <div className="tx-date" style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', color: '#94a3b8' }}>
-                  <Clock size={14} /> {formatTime(tx.createdAt)}
+        {historyLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', gap: '15px' }}>
+            <div className="animate-spin" style={{
+              width: '40px',
+              height: '40px',
+              border: '4px solid rgba(255,255,255,0.1)',
+              borderTopColor: '#6366f1',
+              borderRadius: '50%'
+            }}></div>
+            <p style={{ color: '#94a3b8', fontSize: '0.95rem' }}>🔄 Loading transactions...</p>
+          </div>
+        ) : txHistory.length === 0 ? (
+          <p style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>No transactions yet.</p>
+        ) : (
+          txHistory.map(tx => (
+            <div key={tx._id} className="tx-row" style={{ cursor: 'pointer', position: 'relative' }}>
+              <div onClick={() => { setSelectedTx(tx); setShowTxDetail(true); }} style={{ display: 'flex', flex: 1, alignItems: 'center', gap: '15px' }}>
+                <div className={`tx-icon ${tx.type === 'ADD_MONEY' ? 'add' : (tx.isSender ? 'send' : 'receive')}`}>
+                  {tx.type === 'ADD_MONEY' ? <PlusCircle size={20} /> : (tx.isSender ? <Send size={20} /> : <ArrowDownCircle size={20} />)}
+                </div>
+                <div className="tx-info">
+                  <div className="tx-party" style={{ fontWeight: 600, color: '#f8fafc' }}>{tx.type === 'BILL_PAYMENT' ? tx.description : tx.otherPartyName}</div>
+                  <div className="tx-date" style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem', color: '#94a3b8' }}>
+                    <Clock size={14} /> {formatTime(tx.createdAt)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className={`tx-amount ${tx.isSender ? 'debit' : 'credit'}`}>
+                    {tx.isSender ? '-' : '+'} PKR {tx.amount?.toLocaleString()}
+                  </span>
+                  <span className="status-pill success" style={{ display: 'block', fontSize: '0.7rem' }}>Success</span>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span className={`tx-amount ${tx.isSender ? 'debit' : 'credit'}`}>
-                  {tx.isSender ? '-' : '+'} PKR {tx.amount?.toLocaleString()}
-                </span>
-                <span className="status-pill success" style={{ display: 'block', fontSize: '0.7rem' }}>Success</span>
-              </div>
+              
+              {/* Split from History Feature  */}
+              {tx.isSender && tx.type === 'TRANSFER' && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSplitForm({ description: `Split for ${tx.otherPartyName}`, totalAmount: tx.amount.toString(), friends: [{ mobileNumber: '', name: '' }] });
+                    setActiveTab('split');
+                  }}
+                  style={{ marginLeft: '15px', background: '#6366f1', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <Users size={14} /> Split
+                </button>
+              )}
             </div>
-            
-            {/* Split from History Feature (NayaPay Style) */}
-            {tx.isSender && tx.type === 'TRANSFER' && (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSplitForm({ description: `Split for ${tx.otherPartyName}`, totalAmount: tx.amount.toString(), friends: [{ mobileNumber: '', name: '' }] });
-                  setActiveTab('split');
-                }}
-                style={{ marginLeft: '15px', background: '#6366f1', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                <Users size={14} /> Split
-              </button>
-            )}
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -935,9 +2110,31 @@ export default function Dashboard({ userData, onLogout }) {
             Go Back
           </button>
 
-          <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '15px' }}>
-            Account: <strong style={{ color: '#f8fafc' }}>{billForm.consumerNumber}</strong> — {billForm.billType}
-          </p>
+                    {/* ── 👤 VERIFIED BILL OWNER LAYOUT CARD ── */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(168,85,247,0.1) 100%)', 
+            border: '1px solid rgba(99,102,241,0.2)', 
+            padding: '16px 20px', 
+            borderRadius: '16px', 
+            marginBottom: '20px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '8px',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.92rem' }}>
+              <span style={{ color: '#94a3b8', fontWeight: 500 }}>👤 Registered Owner:</span>
+              <strong style={{ color: '#38bdf8', fontWeight: 700 }}>{billOwnerName} (Verified ✅)</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.92rem' }}>
+              <span style={{ color: '#94a3b8', fontWeight: 500 }}>📱 Account Number:</span>
+              <strong style={{ color: '#f8fafc' }}>{billForm.consumerNumber}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.92rem' }}>
+              <span style={{ color: '#94a3b8', fontWeight: 500 }}>🏢 Bill Category:</span>
+              <strong style={{ color: '#f8fafc' }}>{billForm.billType}</strong>
+            </div>
+          </div>
 
           {/* Invoice Cards */}
           {activeInvoices.map(inv => {
@@ -1073,16 +2270,286 @@ export default function Dashboard({ userData, onLogout }) {
   );
 };
 
-  const renderQR = () => (
-    <div className="view-container">
-      <h2 className="page-title">My QR Code</h2>
-      <div style={{ textAlign: "center", marginTop: "30px", background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-        <QRCodeSVG value={user?.mobileNumber || ''} size={250} />
-        <h3 style={{ marginTop: "20px", color: "#1e293b", fontSize: '1.5rem' }}>Scan to Pay Me</h3>
-        <p style={{ color: "#64748b", fontSize: '1.1rem' }}>Mobile: <strong>{user?.mobileNumber || 'N/A'}</strong></p>
+      const renderQR = () => {
+    const startScanner = async () => {
+      setQrView('scanner');
+      setQrScanResult(null);
+      setQrRecipient(null);
+      setQrAmount('');
+
+      // Wait for DOM to render the scanner div
+      setTimeout(async () => {
+        try {
+          const { Html5Qrcode } = await import('html5-qrcode');
+          const html5QrCode = new Html5Qrcode("qr-reader");
+          window._html5QrCode = html5QrCode;
+
+          await html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            async (decodedText) => {
+              // QR scanned successfully!
+              const mobile = decodedText.trim();
+              
+              await html5QrCode.stop();
+              setQrScanResult(mobile);
+
+                            // Fetch recipient details
+              try {
+                const res = await fetch(`http://192.168.43.54:5000/api/profile/mobile/${mobile}`, {
+                  headers: { Authorization: `Bearer ${getToken()}` }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  setQrRecipient(data);
+                } else {
+                  // Show the actual error message sent by the server!
+                  setToast({ 
+                    title: "Scan Error", 
+                    msg: data.message || `Server status code: ${res.status}`, 
+                    type: "error" 
+                  });
+                  // 🟢 Safe Reset on fail
+                  setQrView(null);
+                  setQrScanResult(null);
+                  setQrRecipient(null);
+                }
+              } catch (err) {
+                setToast({ title: "Error", msg: "Could not fetch user details.", type: "error" });
+                // 🟢 Safe Reset on catch exception (blocks screen freeze)
+                setQrView(null);
+                setQrScanResult(null);
+                setQrRecipient(null);
+              }
+            },
+            (err) => { /* Ignore scan errors */ }
+          );
+        } catch (e) {
+          setToast({ title: "Camera Error", msg: "Could not access camera. Please allow camera permission.", type: "error" });
+        }
+      }, 300);
+    };
+
+    const stopScanner = async () => {
+      try {
+        if (window._html5QrCode) {
+          await window._html5QrCode.stop();
+          window._html5QrCode = null;
+        }
+      } catch (e) { /* ignore */ }
+      setQrView(null);
+      setQrScanResult(null);
+      setQrRecipient(null);
+      setQrAmount('');
+    };
+
+    return (
+      <div className="view-container">
+        <h2 className="page-title">QR Payments</h2>
+
+        {/* 1. TOP ACTIVE MODE BADGE: Active mode ka SINGLE badge show hoga, koi doosra extra button nahi hoga */}
+        {qrView !== null && !qrScanResult && (
+          <div style={{ display: 'flex', marginBottom: '25px', marginTop: '20px' }}>
+            {qrView === 'myqr' && (
+              <div
+                style={{
+                  width: '100%', padding: '12px', borderRadius: '10px', fontWeight: 'bold', textAlign: 'center',
+                  border: '1px solid #667eea',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white', letterSpacing: '0.5px'
+                }}
+              >
+                📱 My QR Code Mode
+              </div>
+            )}
+            {qrView === 'scanner' && (
+              <div
+                style={{
+                  width: '100%', padding: '12px', borderRadius: '10px', fontWeight: 'bold', textAlign: 'center',
+                  border: '1px solid #10b981',
+                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                  color: 'white', letterSpacing: '0.5px'
+                }}
+              >
+                📷 Scan QR Mode
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. NEUTRAL LANDING SCREEN: Jab tak user kuch select na kare */}
+        {qrView === null && !qrScanResult && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', gap: '20px', marginTop: '30px'
+          }}>
+            {/* Option Card 1: My QR */}
+            <button
+              type="button"
+              onClick={() => setQrView('myqr')}
+              style={{
+                width: '100%', padding: '28px 20px', borderRadius: '16px', cursor: 'pointer',
+                border: '1px solid rgba(102,126,234,0.4)',
+                background: 'linear-gradient(135deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%)',
+                color: 'white', transition: 'all 0.3s ease', textAlign: 'left',
+                display: 'flex', alignItems: 'center', gap: '20px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+            >
+              <span style={{ fontSize: '2.5rem' }}>📱</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '5px' }}>My QR Code</div>
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                  Show your personal QR code so others can pay you instantly
+                </div>
+              </div>
+            </button>
+
+            {/* Option Card 2: Scan & Pay */}
+            <button
+              type="button"
+              onClick={startScanner}
+              style={{
+                width: '100%', padding: '28px 20px', borderRadius: '16px', cursor: 'pointer',
+                border: '1px solid rgba(16,185,129,0.4)',
+                background: 'linear-gradient(135deg, rgba(5,150,105,0.15) 0%, rgba(16,185,129,0.15) 100%)',
+                color: 'white', transition: 'all 0.3s ease', textAlign: 'left',
+                display: 'flex', alignItems: 'center', gap: '20px'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'none'}
+            >
+              <span style={{ fontSize: '2.5rem' }}>📷</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '5px' }}>Scan & Pay</div>
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                  Scan someone's QR code to send them money instantly
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {/* 3. MY QR CODE ACTIVE SCREEN */}
+        {qrView === 'myqr' && !qrScanResult && (
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ textAlign: "center", background: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+              <QRCodeSVG value={profile?.mobileNumber || ''} size={250} />
+              <h3 style={{ marginTop: "20px", color: "#1e293b", fontSize: '1.3rem' }}>Scan to Pay Me</h3>
+              <p style={{ color: "#64748b" }}>Mobile: <strong style={{ color: '#667eea' }}>{profile?.mobileNumber || 'N/A'}</strong></p>
+              <p style={{ color: "#94a3b8", fontSize: '0.85rem', marginTop: '10px' }}>
+                Show this QR to anyone with Wallexa and they can pay you instantly.
+              </p>
+            </div>
+            <button
+              onClick={stopScanner}
+              style={{
+                marginTop: '15px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)',
+                color: '#94a3b8', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', width: '100%', fontWeight: 600
+              }}
+            >
+              ✕ Back to Main Menu
+            </button>
+          </div>
+        )}
+
+        {/* 4. CAMERA SCANNER ACTIVE SCREEN */}
+        {qrView === 'scanner' && !qrScanResult && (
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div id="qr-reader" style={{ width: '100%', borderRadius: '15px', overflow: 'hidden', border: '2px solid rgba(16,185,129,0.5)' }} />
+            <button
+              onClick={stopScanner}
+              style={{
+                marginTop: '15px', background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444',
+                color: '#ef4444', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', width: '100%', fontWeight: 600
+              }}
+            >
+              ✕ Cancel Scan
+            </button>
+            <p style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', marginTop: '10px' }}>
+              Point your camera at another user's Wallexa QR Code
+            </p>
+          </div>
+        )}
+
+        {/* 5. PAYMENT WINDOW SCREEN (Scan hone ke baad - absolutely clean & isolated) */}
+        {qrScanResult && qrRecipient && (
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            {/* Recipient Card */}
+            <div style={{
+              background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.4)',
+              borderRadius: '16px', padding: '20px', marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <div style={{
+                  width: '55px', height: '55px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'white', fontSize: '1.4rem', fontWeight: 700, flexShrink: 0
+                }}>
+                  {qrRecipient.firstName?.[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#f8fafc' }}>
+                    {qrRecipient.firstName} {qrRecipient.lastName}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 500 }}>
+                    ✅ Verified Wallexa Account
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '2px' }}>
+                    {qrRecipient.mobileNumber}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Amount Input */}
+            <div className="form-group">
+              <label className="form-label">Enter Amount (PKR)</label>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="0"
+                value={qrAmount}
+                onChange={e => setQrAmount(e.target.value.replace(/[^0-9]/g, ''))}
+                autoFocus
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '12px', marginTop: '15px' }}>
+              <button
+                className="primary-button"
+                style={{ flex: 2, background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)', margin: 0 }}
+                disabled={!qrAmount || Number(qrAmount) <= 0 || loading || isFrozen}
+                onClick={() => setShowQrConfirm(true)}
+              >
+                {loading ? 'Sending...' : `💸 Send PKR ${qrAmount || '0'}`}
+              </button>
+              <button
+                className="secondary-button"
+                style={{ flex: 1 }}
+                onClick={() => { setQrScanResult(null); setQrRecipient(null); setQrAmount(''); startScanner(); }}
+              >
+                Re-scan
+              </button>
+            </div>
+
+            <button
+              onClick={stopScanner}
+              style={{
+                marginTop: '12px', background: 'none', border: '1px solid rgba(255,255,255,0.15)',
+                color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', width: '100%', fontSize: '0.85rem'
+              }}
+            >
+              ✕ Cancel & Exit
+            </button>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderSplit = () => {
     try {
@@ -1108,7 +2575,7 @@ export default function Dashboard({ userData, onLogout }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
                 <input type="checkbox" id="customSplit" checked={splitForm.isCustom} onChange={e => setSplitForm({ ...splitForm, isCustom: e.target.checked })} />
                 <label htmlFor="customSplit" style={{ fontSize: '0.9rem', color: '#475569', cursor: 'pointer', fontWeight: 600 }}>
-                  Enable Custom Share (NayaPay Style)
+                  Enable Custom Share
                 </label>
               </div>            {/* Split Participants Card */}
               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#1e293b' }}>
@@ -1212,7 +2679,7 @@ export default function Dashboard({ userData, onLogout }) {
                     <div style={{ marginBottom: '15px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', marginBottom: '8px', color: '#64748b' }}>
                         <span>Collection Progress</span>
-                        <span style={{ fontWeight: 600, color: '#10b981' }}>{participants.filter(p => p.status === 'ACCEPTED').length} paid / {participants.length} pending</span>
+                        <span style={{ fontWeight: 600, color: '#10b981' }}>{participants.filter(p => p.status === 'ACCEPTED').length} paid / {participants.filter(p => p.status === 'PENDING').length} pending</span>
                       </div>
                       <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                         <div style={{ 
@@ -1427,7 +2894,10 @@ export default function Dashboard({ userData, onLogout }) {
             <Users size={20} /> Split Bill
           </button>
           <button className={`nav-item ${activeTab === 'qr' ? 'active' : ''}`} onClick={() => setActiveTab('qr')}>
-            <QrCode size={20} /> My QR
+            <QrCode size={20} /> QR Payments
+          </button>
+                    <button className={`nav-item ${activeTab === 'social' ? 'active' : ''}`} onClick={() => setActiveTab('social')}>
+            <Share2 size={20} /> Social Feed
           </button>
           <button className={`nav-item ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
             <History size={20} /> History
@@ -1449,7 +2919,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{user?.firstName || 'User'}</div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{user?.mobileNumber || 'No Number'}</div>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{profile?.mobileNumber || 'No Number'}</div>
           </div>
           <LogOut size={18} style={{ cursor: 'pointer', color: '#ef4444' }} onClick={() => { socket?.disconnect(); onLogout(); }} />
         </div>
@@ -1461,69 +2931,141 @@ export default function Dashboard({ userData, onLogout }) {
           <div className="page-title" style={{ textTransform: 'capitalize' }}>
             {activeTab === 'home' ? 'Overview' : activeTab}
           </div>
-          <div className="header-actions">
-            <div style={{ position: 'relative' }}>
-              <button className="notif-btn" onClick={() => setShowNotifDropdown(!showNotifDropdown)}>
-                <Bell size={24} />
-                {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
-              </button>
+            
+                    <div className="header-actions">
+            {/* 👤 FRIEND REQUESTS DROPDOWN BUTTON (Only visible on Social Feed tab) */}
+            {activeTab === 'social' && (
+              <div style={{ position: 'relative' }}>
+                <button className="notif-btn" onClick={() => { setShowFriendsDropdown(!showFriendsDropdown); setShowNotifDropdown(false); }}>
+                  <Users size={24} />
+                  {friendRequests.length > 0 && <span className="badge" style={{ background: '#ef4444' }}>{friendRequests.length}</span>}
+                </button>
 
-              {/* NOTIFICATION DROPDOWN */}
-              {showNotifDropdown && (
-                <div className="notif-dropdown">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', borderBottom: '1px solid #e2e8f0' }}>
-                    <h3 style={{ margin: 0, fontSize: '1rem', color: '#1e293b' }}>Notifications</h3>
-                    {unreadCount > 0 && (
-                      <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.85rem' }}>
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                    {notifications.length === 0 ? (
-                      <p style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No notifications</p>
-                    ) : (
-                      notifications.map(notif => (
-                        <div
-                          key={notif._id}
-                          onClick={() => !notif.isRead && markAsRead(notif._id)}
-                          style={{
-                            padding: '15px',
-                            borderBottom: '1px solid #f1f5f9',
-                            background: notif.isRead ? 'white' : '#f8fafc',
-                            cursor: notif.isRead ? 'default' : 'pointer',
-                            transition: 'background 0.2s'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', marginBottom: '4px' }}>
-                                {notif.title}
+                {/* FRIEND REQUESTS DROPDOWN */}
+                {showFriendsDropdown && (
+                  <div className="notif-dropdown" style={{ right: 0, background: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.08)', width: '300px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', color: '#f8fafc' }}>Friend Requests</h3>
+                    </div>
+                    <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+                      {friendRequests.length === 0 ? (
+                        <p style={{ padding: '25px', textAlign: 'center', color: '#94a3b8', fontSize: '0.9rem' }}>No pending requests</p>
+                      ) : (
+                        friendRequests.map(req => (
+                          <div
+                            key={req._id}
+                            style={{
+                              padding: '12px 15px',
+                              borderBottom: '1px solid rgba(255,255,255,0.05)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: 'white', fontSize: '0.85rem' }}>
+                                {req.sender.profilePicture ? (
+                                  <img src={req.sender.profilePicture} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                                ) : (
+                                  req.sender.firstName.charAt(0).toUpperCase()
+                                )}
                               </div>
-                              <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '6px' }}>
-                                {notif.message}
-                              </div>
-                              <div style={{ color: '#94a3b8', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Clock size={12} /> {formatTimeOnly(notif.createdAt)}
+                              <div>
+                                <div style={{ color: '#f8fafc', fontWeight: 600, fontSize: '0.85rem' }}>{req.sender.firstName} {req.sender.lastName}</div>
+                                <div style={{ color: '#6366f1', fontSize: '0.75rem', fontWeight: 600 }}>@{req.sender.username}</div>
                               </div>
                             </div>
-                            {!notif.isRead && (
-                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#667eea', marginTop: '6px' }} />
-                            )}
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button 
+                                className="primary-button" 
+                                style={{ width: 'auto', padding: '5px 10px', background: '#10b981', fontSize: '0.75rem', flex: 1 }}
+                                onClick={() => handleAcceptFriendRequest(req._id, req.sender.firstName)}
+                              >
+                                Accept
+                              </button>
+                              <button 
+                                className="secondary-button" 
+                                style={{ width: 'auto', padding: '5px 10px', background: '#ef4444', color: 'white', fontSize: '0.75rem', flex: 1 }}
+                                onClick={() => handleRejectFriendRequest(req._id)}
+                              >
+                                Reject
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
+            {/* 🔔 BELL NOTIFICATIONS BUTTON (Visible on all tabs EXCEPT Social Feed) */}
+            {activeTab !== 'social' && (
+              <div style={{ position: 'relative' }}>
+                <button className="notif-btn" onClick={() => { setShowNotifDropdown(!showNotifDropdown); setShowFriendsDropdown(false); }}>
+                  <Bell size={24} />
+                  {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
+                </button>
+
+                {/* NOTIFICATION DROPDOWN */}
+                {showNotifDropdown && (
+                  <div className="notif-dropdown">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', borderBottom: '1px solid #e2e8f0' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', color: '#1e293b' }}>Notifications</h3>
+                      {unreadCount > 0 && (
+                        <button onClick={markAllAsRead} style={{ background: 'none', border: 'none', color: '#667eea', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      {notifications.length === 0 ? (
+                        <p style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No notifications</p>
+                      ) : (
+                        notifications.map(notif => (
+                          <div
+                            key={notif._id}
+                            onClick={() => !notif.isRead && markAsRead(notif._id)}
+                            style={{
+                              padding: '15px',
+                              borderBottom: '1px solid #f1f5f9',
+                              background: notif.isRead ? 'white' : '#f8fafc',
+                              cursor: notif.isRead ? 'default' : 'pointer',
+                              transition: 'background 0.2s'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                  {notif.title}
+                                </div>
+                                <div style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '6px' }}>
+                                  {notif.message}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Clock size={12} /> {formatTimeOnly(notif.createdAt)}
+                                </div>
+                              </div>
+                              {!notif.isRead && (
+                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#667eea', marginTop: '6px' }} />
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 
         {activeTab === 'home' && renderHome()}
         {activeTab === 'send' && renderSend()}
         {activeTab === 'add' && renderAdd()}
+        {activeTab === 'social' && renderSocial()}
         {activeTab === 'history' && renderHistory()}
         {activeTab === 'bills' && renderBills()}
         {activeTab === 'split' && renderSplit()}
@@ -1638,7 +3180,61 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-               {/* EXTERNAL BANK CONFIRMATION MODAL */}
+        {/* QR PAYMENT CONFIRMATION MODAL */}
+{showQrConfirm && qrRecipient && (
+  <div className="modal-overlay" onClick={() => setShowQrConfirm(false)}>
+    <div className="modal-card" onClick={e => e.stopPropagation()}>
+      <div className="modal-header">
+        <h3>Confirm QR Payment</h3>
+        <button className="close-btn" onClick={() => setShowQrConfirm(false)}>×</button>
+      </div>
+
+      <p style={{ color: '#94a3b8', marginBottom: '15px', fontSize: '0.9rem' }}>
+        Please confirm the transfer details:
+      </p>
+
+      <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '18px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <span style={{ color: '#94a3b8' }}>Recipient:</span>
+          <strong style={{ color: '#f8fafc' }}>{qrRecipient.firstName} {qrRecipient.lastName}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <span style={{ color: '#94a3b8' }}>Mobile:</span>
+          <strong style={{ color: '#f8fafc' }}>{qrRecipient.mobileNumber}</strong>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ color: '#94a3b8', fontSize: '1.1rem' }}>Amount:</span>
+          <strong style={{ color: '#10b981', fontSize: '1.3rem' }}>PKR {Number(qrAmount).toLocaleString()}</strong>
+        </div>
+      </div>
+
+      <p style={{ color: '#f59e0b', fontSize: '0.8rem', marginBottom: '20px', textAlign: 'center' }}>
+        ⚠️ This transfer is instant and cannot be reversed once confirmed.
+      </p>
+
+      <div style={{ display: 'flex', gap: '10px' }}>
+        <button
+          className="primary-button"
+          style={{ flex: 1, background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+          onClick={handleQrSend}
+          disabled={loading}
+        >
+          {loading ? 'Sending...' : '✅ Confirm & Send'}
+        </button>
+        <button
+          className="secondary-button"
+          style={{ flex: 1 }}
+          onClick={() => setShowQrConfirm(false)}
+          disabled={loading}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+        {/* EXTERNAL BANK CONFIRMATION MODAL */}
         {showExternalConfirm && (
           <div className="modal-overlay" onClick={() => setShowExternalConfirm(false)}>
             <div className="modal-card" onClick={e => e.stopPropagation()}>
@@ -1697,6 +3293,44 @@ export default function Dashboard({ userData, onLogout }) {
                   className="secondary-button"
                   style={{ flex: 1 }}
                   onClick={() => setShowExternalConfirm(false)}
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+                {/* DEACTIVATE SOCIAL CONFIRMATION MODAL */}
+        {showDeactivateConfirm && (
+          <div className="modal-overlay" onClick={() => setShowDeactivateConfirm(false)}>
+            <div className="modal-card" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3 style={{ color: '#ef4444' }}>Deactivate Social Profile 🗑️</h3>
+                <button className="close-btn" onClick={() => setShowDeactivateConfirm(false)}>×</button>
+              </div>
+              
+              <p style={{ marginBottom: '20px', color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>
+                Are you sure you want to deactivate your Wallexa Social Profile? This will delete your username, hide your profile from your friends, and reset your social feed. You can reactivate it anytime.
+              </p>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  className="primary-button" 
+                  style={{ flex: 1, background: '#ef4444', color: 'white' }} 
+                  onClick={() => {
+                    setShowDeactivateConfirm(false); // Close confirmation modal
+                    confirmDeactivateSocial();      // Trigger deactivation API
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? 'Deactivating...' : 'Confirm & Delete'}
+                </button>
+                <button 
+                  className="secondary-button" 
+                  style={{ flex: 1 }} 
+                  onClick={() => setShowDeactivateConfirm(false)}
                   disabled={loading}
                 >
                   Cancel
