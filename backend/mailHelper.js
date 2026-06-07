@@ -198,3 +198,95 @@ export const sendFundsAddedEmail = async (userEmail, amount) => {
     console.error('❌ Error sending funds added email:', error);
   }
 };
+
+/**
+ * Send Security Alert Email (Velocity Check)
+ */
+export const sendSecurityAlertEmail = async (userEmail, reason) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject: '🚨 Security Alert: Wallet Frozen - Wallexa',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Wallexa Security</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #ef4444; margin-top: 0;">🚨 Wallet Frozen Due to Suspicious Activity</h2>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              Our system detected abnormal activity on your account: <strong>${reason}</strong>.
+            </p>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              For your safety, your wallet has been temporarily frozen. All outgoing transfers, bill payments, and card loads have been suspended.
+            </p>
+            
+            <p style="font-size: 14px; color: #64748b; margin-top: 30px;">
+              To unfreeze your wallet, log in to your dashboard and verify your identity using the Unfreeze button.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #94a3b8; font-size: 12px;">
+            <p>This is an automated security message from Wallexa. Please do not reply.</p>
+            <p>© 2026 Wallexa. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    });
+    console.log(`✅ Security alert email sent to ${userEmail}`);
+  } catch (error) {
+    console.error('❌ Error sending security alert email:', error);
+  }
+};
+
+/**
+ * Send Security OTP Email for Large Transaction Verification
+ */
+export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject: '🔒 Transaction Verification OTP - Wallexa',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Wallexa Security</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #1e293b; margin-top: 0;">Confirm Your Transaction</h2>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              A high-value transaction of <strong>PKR ${amount.toLocaleString()}</strong> is being initiated from your account. 
+            </p>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              Please use the following verification code to authorize this transaction:
+            </p>
+            
+            <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+              <span style="font-size: 32px; font-weight: 700; color: #4f46e5; letter-spacing: 5px;">${otp}</span>
+            </div>
+            
+            <p style="font-size: 14px; color: #64748b; margin-top: 30px;">
+              This code is valid for 5 minutes. If you did not initiate this transaction, please freeze your wallet immediately.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #94a3b8; font-size: 12px;">
+            <p>This is an automated security message from Wallexa. Please do not reply.</p>
+            <p>© 2026 Wallexa. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    });
+    console.log(`✅ Transaction verification OTP email sent to ${userEmail}`);
+  } catch (error) {
+    console.error('❌ Error sending transaction OTP email:', error);
+  }
+};

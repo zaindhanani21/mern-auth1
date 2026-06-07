@@ -3,11 +3,12 @@ import express from "express";
 import User from "./models/User.js";
 import Transaction from "./models/Transaction.js";
 import ExternalBank from "./models/ExternalBank.js";
+import Wallet from "./models/Wallet.js"; 
 import mongoose from "mongoose";
 
 const router = express.Router();
 
-// --- ROUTE: SEND MONEY ---
+// --- ROUTE 1: SEND MONEY (Wallet-to-Wallet transfer) ---
 router.post("/send-money", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -15,16 +16,16 @@ router.post("/send-money", async (req, res) => {
   try {
     const { senderId, recipientMobile, amount } = req.body;
 
-    // 1. Validation
+    // 1. Validation check
     if (!senderId || !recipientMobile || !amount) {
       await session.abortTransaction();
-      session.endSession(); // Ensure session ends on early return
+      session.endSession();
       return res
         .status(400)
         .json({ message: "Missing required transaction details." });
     }
 
-    // 2. Find Sender
+    // 2. Find Sender profile details
     const sender = await User.findById(senderId).session(session);
     if (!sender) {
       await session.abortTransaction();
@@ -32,7 +33,7 @@ router.post("/send-money", async (req, res) => {
       return res.status(404).json({ message: "Sender account not found." });
     }
 
-    // ❄️ Security Check: Frozen
+    // ❄️ Security Check: Frozen Account validation
     if (sender.isFrozen) {
       await session.abortTransaction();
       session.endSession();
@@ -41,9 +42,8 @@ router.post("/send-money", async (req, res) => {
         .json({ message: "Your account is frozen. Please unfreeze." });
     }
 
-    // 💰 Balance Check & Failure Notification
+    // 💰 Balance Check & Decline Notification Email
     if (sender.balance < amount) {
-      // 🟢 Failure email can still be awaited because the transaction stops anyway
       try {
         await sendTransferEmail(
           sender.email,
@@ -64,7 +64,7 @@ router.post("/send-money", async (req, res) => {
       return res.status(400).json({ message: "Insufficient balance." });
     }
 
-    // 3. Find Recipient
+    // 3. Find Recipient profile details
     const recipient = await User.findOne({
       mobileNumber: recipientMobile,
     }).session(session);
@@ -84,6 +84,15 @@ router.post("/send-money", async (req, res) => {
         .json({ message: "You cannot send money to yourself." });
     }
 
+    // 🟢 Fetch Wallets mapping for transaction history
+    const senderWallet = await Wallet.findOne({ userId: sender._id }).session(session);
+    const recipientWallet = await Wallet.findOne({ userId: recipient._id }).session(session);
+    if (!senderWallet || !recipientWallet) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "Wallet records not found." });
+    }
+
     // 4. Update Balances
     sender.balance -= Number(amount);
     recipient.balance += Number(amount);
@@ -91,21 +100,22 @@ router.post("/send-money", async (req, res) => {
     await sender.save({ session });
     await recipient.save({ session });
 
-    // 5. Create Transaction
+    // 5. Create Immutable Transaction Record
     const newTransaction = new Transaction({
-      sender: sender._id,
-      recipient: recipient._id,
+      senderWallet: senderWallet._id,
+      receiverWallet: recipientWallet._id,
       amount: Number(amount),
+      type: "SEND",
       description: `Sent to ${recipientMobile}`,
+      status: "COMPLETED"
     });
     await newTransaction.save({ session });
 
-    // 🟢 COMMIT FIRST: Save data to the database before doing anything else
+    // 🟢 Commit Database Session
     await session.commitTransaction();
     session.endSession();
 
-    // 📧 2-Way Success Notifications (BACKGROUND TASKS)
-    // 🟢 REMOVED 'await': These now run in the background without blocking the response
+    // 📧 Background Success emails
     sendTransferEmail(recipient.email, "Waxella: Payment Received!", {
       amount: amount,
       senderName: `${sender.firstName} ${sender.lastName || ""}`,
@@ -126,7 +136,6 @@ router.post("/send-money", async (req, res) => {
       console.error("Background Mailer Error (Sender):", e.message),
     );
 
-    // 🟢 INSTANT RESPONSE: The user sees "Success" immediately
     return res.status(200).json({
       message: "Transfer Successful!",
       newBalance: sender.balance,
@@ -141,7 +150,7 @@ router.post("/send-money", async (req, res) => {
   }
 });
 
-// --- ROUTE: ADD MONEY (Logic Update: Database Match vs. Time Match) ---
+// --- ROUTE 2: ADD MONEY (Deposit funds from bank card) ---
 router.post("/add-money", async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -150,7 +159,6 @@ router.post("/add-money", async (req, res) => {
     const { userId, cardNumber, expiryDate, cvc, amount } = req.body;
     const depositAmount = Number(amount);
 
-    // 1. User Look-up
     const user = await User.findById(userId).session(session);
     if (!user) {
       await session.abortTransaction();
@@ -158,22 +166,16 @@ router.post("/add-money", async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    // 🟢 STEP 1: Find the account by Card Number only
     const bankAccount = await ExternalBank.findOne({ 
       cardNumber: cardNumber.trim() 
     }).session(session);
 
-    // 🟢 STEP 2: Validate if provided CVC and Expiry MATCH the database
-    // If they don't match, we treat it as "Account not found" or "Invalid details"
     if (!bankAccount || bankAccount.cvc !== cvc.trim() || bankAccount.expiryDate !== expiryDate.trim()) {
       await session.abortTransaction();
       session.endSession();
-      // Logic: If the details don't match the database record, stop here.
       return res.status(404).json({ message: "Bank account not found or invalid details." });
     }
 
-    // 🟢 STEP 3: Now check Expiry against CURRENT TIME (Jan 2026)
-    // We only reach this if the expiryDate matched the database record
     const [expMonth, expYear] = expiryDate.split("/").map(Number);
     const today = new Date();
     const currentYear = today.getFullYear() % 100;
@@ -194,7 +196,6 @@ router.post("/add-money", async (req, res) => {
       return res.status(400).json({ message: "This card has expired." });
     }
 
-    // ❌ 4. Bank Balance Check
     if (bankAccount.bankBalance < depositAmount) {
       try {
         await sendAddMoneyEmail(user.email, "Waxella: Deposit Failed (Insufficient Bank Funds)", {
@@ -210,24 +211,33 @@ router.post("/add-money", async (req, res) => {
       return res.status(400).json({ message: "Insufficient bank balance." });
     }
 
-    // 5. Update Accounts and Commit
+    // 🟢 Fetch user's receiving wallet
+    const userWallet = await Wallet.findOne({ userId: user._id }).session(session);
+    if (!userWallet) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "User wallet record not found." });
+    }
+
     bankAccount.bankBalance -= depositAmount;
     user.balance = (user.balance || 0) + depositAmount;
     await bankAccount.save({ session });
     await user.save({ session });
 
+    // 🟢 Save Secure Transaction
     const newTransaction = new Transaction({
-      sender: null,
-      recipient: user._id,
+      senderWallet: null,
+      receiverWallet: userWallet._id,
       amount: depositAmount,
+      type: "ADD_MONEY",
       description: `${bankAccount.bankName} | ****${cardNumber.slice(-4)}`,
+      status: "COMPLETED"
     });
     await newTransaction.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    // Background Success Email
     sendAddMoneyEmail(user.email, "Waxella: Funds Added Successfully!", {
       amount: depositAmount,
       senderName: bankAccount.bankName,
@@ -244,20 +254,53 @@ router.post("/add-money", async (req, res) => {
     res.status(500).json({ message: "Internal Error" });
   }
 });
-// --- HELPER ROUTES ---
+
+// --- ROUTE 3: BALANCE CHECK (Helper endpoint) ---
 router.get("/balance/:userId", async (req, res) => {
   const user = await User.findById(req.params.userId).select("balance");
   res.status(200).json({ balance: user.balance });
 });
 
+// --- ROUTE 4: TRANSACTION HISTORY (Helper endpoint) ---
 router.get("/history/:userId", async (req, res) => {
-  const history = await Transaction.find({
-    $or: [{ sender: req.params.userId }, { recipient: req.params.userId }],
-  })
-    .populate("sender", "firstName mobileNumber")
-    .populate("recipient", "firstName mobileNumber")
-    .sort({ createdAt: -1 });
-  res.status(200).json(history);
+  try {
+    const userWallet = await Wallet.findOne({ userId: req.params.userId });
+    if (!userWallet) {
+      return res.status(404).json({ message: "Wallet not found." });
+    }
+
+    // Find all transactions referencing this wallet as sender or receiver
+    const history = await Transaction.find({
+      $or: [{ senderWallet: userWallet._id }, { receiverWallet: userWallet._id }],
+    })
+      .populate({
+        path: 'senderWallet',
+        populate: { path: 'userId', select: 'firstName mobileNumber' }
+      })
+      .populate({
+        path: 'receiverWallet',
+        populate: { path: 'userId', select: 'firstName mobileNumber' }
+      })
+      .sort({ createdAt: -1 });
+
+    // Format output mapping to match legacy frontend keys (sender & recipient User details)
+    const formattedHistory = history.map(tx => {
+      return {
+        _id: tx._id,
+        amount: tx.amount,
+        type: tx.type,
+        description: tx.description,
+        status: tx.status,
+        createdAt: tx.createdAt,
+        sender: tx.senderWallet ? tx.senderWallet.userId : null,
+        recipient: tx.receiverWallet ? tx.receiverWallet.userId : null
+      };
+    });
+
+    res.status(200).json(formattedHistory);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 export default router;

@@ -30,6 +30,7 @@ import {
   UserMinus,
   UserCheck,
   UserX,
+  Heart, // 🟢 Heart icon add kiya
 } from "lucide-react";
 import "./Css/ModernDashboard.css";
 
@@ -98,6 +99,8 @@ export default function Dashboard({ userData, onLogout }) {
   });
   const [otp, setOtp] = useState("");
   const [showOtpModal, setShowOtpModal] = useState(false);
+    const [otpPurpose, setOtpPurpose] = useState("freeze"); // 🟢 Tracks modal purpose ("freeze" or "transaction")
+  const [pendingTx, setPendingTx] = useState(null); // 🟢 Stores pending transaction info temporarily
   const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
 
   // New Features State
@@ -129,7 +132,15 @@ export default function Dashboard({ userData, onLogout }) {
   // Public Profile and Posts
   const [postVisibility, setPostVisibility] = useState("friends");
   const [selectedPublicUser, setSelectedPublicUser] = useState(null); // Jab hum kisi user ki profile details screen kholenge
-    const [ownPostPrivacyFilter, setOwnPostPrivacyFilter] = useState("public"); // 🟢 Own profile tabs filter state (Default to public)
+  const [ownPostPrivacyFilter, setOwnPostPrivacyFilter] = useState("public"); // 🟢 Own profile tabs filter state (Default to public)
+  const [showRequestsModal, setShowRequestsModal] = useState(false); // 🟢 Requests popup show/hide control
+  const [activeCommentPost, setActiveCommentPost] = useState(null); // 🟢 Comments bottom sheet control
+  const [commentText, setCommentText] = useState(""); // 🟢 Comment input text field
+  const [commentSubmitting, setCommentSubmitting] = useState(false); // 🟢 Double submission block karne ke liye
+  const [reactionSubmitting, setReactionSubmitting] = useState(false); // 🟢 Prevents duplicate fast reaction clicks
+  const [hoveredPostReactId, setHoveredPostReactId] = useState(null); // 🟢 Reaction picker popup show/hide control
+  const [activeReactionsPost, setActiveReactionsPost] = useState(null); // 🟢 Reactions popup modal control
+  const [reactionsFilterTab, setReactionsFilterTab] = useState("all"); // 🟢 Active reactions filter tab ('all' | 'like' | 'love' etc)
   const [publicUserPosts, setPublicUserPosts] = useState([]); // Viewed user ke posts display karne ke liye
   const [homeFeedPosts, setHomeFeedPosts] = useState([]); // Main timeline feed posts
   const [postContent, setPostContent] = useState(""); // Status update box content
@@ -266,7 +277,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-    const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const res = await fetch("http://192.168.43.54:5000/api/profile", {
         headers: { Authorization: `Bearer ${getToken()}` },
@@ -346,7 +357,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-    const fetchHomeFeed = useCallback(async () => {
+  const fetchHomeFeed = useCallback(async () => {
     if (!getToken()) {
       setFeedLoading(false); // 🟢 Token na ho toh loading status band karein
       return;
@@ -520,7 +531,7 @@ export default function Dashboard({ userData, onLogout }) {
           body: JSON.stringify({ requestId }),
         },
       );
-            if (res.ok) {
+      if (res.ok) {
         setToast({
           title: "Accepted 🎉",
           msg: `You are now friends with ${senderName}!`,
@@ -643,7 +654,7 @@ export default function Dashboard({ userData, onLogout }) {
           body: JSON.stringify({ friendId }),
         },
       );
-           if (res.ok) {
+      if (res.ok) {
         setToast({
           title: "Removed",
           msg: `Removed ${friendName} from friends.`,
@@ -672,7 +683,7 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   // 🟢 Create status post handler
-    const handleCreatePost = async (e) => {
+  const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!postContent.trim()) return;
     try {
@@ -695,7 +706,7 @@ export default function Dashboard({ userData, onLogout }) {
         });
         setPostContent("");
         fetchHomeFeed();
-        
+
         // 🟢 Agar hum apni hi profile ("SELF") par khare hain toh profile timeline refresh karein
         if (selectedPublicUser && selectedPublicUser.status === "SELF") {
           fetchPublicUserPosts(selectedPublicUser.id);
@@ -710,6 +721,129 @@ export default function Dashboard({ userData, onLogout }) {
         msg: "Network error sharing post.",
         type: "error",
       });
+    }
+  };
+
+  // 🟢 Handle Comment Submission
+  // 🟢 Handle Comment Submission (Secure with Duplication & Script Protection)
+  const handleCommentSubmit = async (e) => {
+    e.preventDefault();
+
+    // Click block checks
+    if (!commentText.trim() || !activeCommentPost || commentSubmitting) return;
+
+    // 1. Double/Extra spacing ko single space me tabdeel aur trim karna
+    let cleanText = commentText.replace(/\s+/g, " ").trim();
+
+    // 2. Script/HTML injection ko block aur remove karna (XSS Protection)
+    cleanText = cleanText.replace(/<[^>]*>/g, "");
+
+    // Empty input verification
+    if (!cleanText) {
+      setToast({
+        title: "Error",
+        msg: "Comment cannot contain only tags or spaces!",
+        type: "error",
+      });
+      return;
+    }
+
+    // 3. Length Limit check (Max 300 characters)
+    if (cleanText.length > 300) {
+      setToast({
+        title: "Limit Exceeded",
+        msg: "Comment cannot be longer than 300 characters.",
+        type: "error",
+      });
+      return;
+    }
+
+    setCommentSubmitting(true); // 🟢 Block further clicks immediately
+    try {
+      const res = await fetch(
+        `http://192.168.43.54:5000/api/profile/posts/${activeCommentPost._id}/comment`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ content: cleanText }),
+        },
+      );
+      if (res.ok) {
+        setCommentText(""); // Clear text field
+      } else {
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({
+        title: "Error",
+        msg: "Network error adding comment.",
+        type: "error",
+      });
+    } finally {
+      setCommentSubmitting(false); // 🟢 Release click block
+    }
+  };
+
+  // 🟢 Handle Post Reaction (React, Update, or Toggle Off)
+const handlePostReact = async (postId, type) => {
+  if (reactionSubmitting) return; // Prevent fast consecutive clicks
+  setReactionSubmitting(true);
+  try {
+    const res = await fetch(
+      `http://192.168.43.54:5000/api/profile/posts/${postId}/react`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ type }),
+      },
+    );
+    const data = await res.json();
+    if (res.ok) {
+      setHoveredPostReactId(null);
+    } else {
+      setToast({ title: "Error", msg: data.message, type: "error" });
+    }
+  } catch {
+    setToast({
+      title: "Error",
+      msg: "Network error updating reaction.",
+      type: "error",
+    });
+  } finally {
+    setReactionSubmitting(false); // Enable clicks again
+  }
+};
+
+  // 🟢 Handle Social notification click (Opens post comments instantly)
+  const handleSocialNotificationClick = async (notif) => {
+    // Mark as read natively
+    if (!notif.isRead) {
+      markAsRead(notif._id);
+    }
+
+    setShowFriendsDropdown(false); // Close dropdown
+
+    try {
+      const res = await fetch(
+        `http://192.168.43.54:5000/api/profile/posts/${notif.metadata.postId}`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        },
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setActiveCommentPost(data); // 🟢 Set active post to show comments sheet
+        setCommentText("");
+      }
+    } catch (e) {
+      console.error("Error fetching notification post details", e);
     }
   };
 
@@ -732,7 +866,9 @@ export default function Dashboard({ userData, onLogout }) {
     newSocket.on("notification", (notif) => {
       setNotifications((prev) => [notif, ...prev]);
       setUnreadCount((prev) => prev + 1);
-      setToast({ title: notif.title, msg: notif.message, type: "info" });
+      if (notif.type !== "SOCIAL_REACT") {
+        setToast({ title: notif.title, msg: notif.message, type: "info" });
+      }
       fetchData();
       fetchSplits();
       fetchNotifications();
@@ -742,7 +878,7 @@ export default function Dashboard({ userData, onLogout }) {
     });
 
     // 👤 Real-time Friend Request Received
-        // 👤 Real-time Friend Request Received
+    // 👤 Real-time Friend Request Received
     newSocket.on("friend_request_received", (data) => {
       setToast({
         title: "New Friend Request 👤",
@@ -750,7 +886,7 @@ export default function Dashboard({ userData, onLogout }) {
         type: "info",
       });
       fetchFriendRequests(); // Refresh requests box
-      
+
       // REAL-TIME PROFILE UPDATE: Agar user usi ki profile par khara hai toh foran "Accept/Reject" dikhao
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.sender.id) {
@@ -761,7 +897,7 @@ export default function Dashboard({ userData, onLogout }) {
     });
 
     // 🎉 Real-time Friend Request Accepted
-        newSocket.on("friend_request_accepted", (data) => {
+    newSocket.on("friend_request_accepted", (data) => {
       setToast({
         title: "Request Accepted 🎉",
         msg: `${data.friend.firstName} accepted your friend request!`,
@@ -769,7 +905,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
       fetchFriends();
       fetchHomeFeed();
-      
+
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.friend.id) {
           fetchPublicUserPosts(data.friend.id); // 🟢 User Profile page ko update karein
@@ -779,11 +915,11 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-            // 💔 Real-time Unfriend (Dosti khatam)
-       newSocket.on("friend_removed", (data) => {
+    // 💔 Real-time Unfriend (Dosti khatam)
+    newSocket.on("friend_removed", (data) => {
       fetchFriends();
       fetchHomeFeed();
-      
+
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.friendId) {
           fetchPublicUserPosts(data.friendId); // 🟢 User Profile page ko update karein
@@ -796,17 +932,20 @@ export default function Dashboard({ userData, onLogout }) {
     // ❌ Real-time Friend Request Rejected / Cancelled (Naya Code)
     newSocket.on("friend_request_rejected", (data) => {
       fetchFriendRequests(); // Requests list refresh karo
-      
+
       // REAL-TIME PROFILE UPDATE: Profile card ko wapas "Add Friend" (NONE) state par le jao
       setSelectedPublicUser((prev) => {
-        if (prev && (prev.id === data.senderId || prev.requestId === data.requestId)) {
+        if (
+          prev &&
+          (prev.id === data.senderId || prev.requestId === data.requestId)
+        ) {
           return { ...prev, status: "NONE", requestId: null };
         }
         return prev;
       });
     });
 
-     // 📢 Real-time Post Creation (Social Feed Instant Update - Naya Code)
+    // 📢 Real-time Post Creation (Social Feed Instant Update - Naya Code)
     newSocket.on("post_created", (data) => {
       // Agar main khud author hoon, toh refresh karne ki zaroorat nahi hai
       if (data.authorId === userId) return;
@@ -819,12 +958,91 @@ export default function Dashboard({ userData, onLogout }) {
           fetchHomeFeed();
         }
       }
-            // 2. Agar main currently isi specific user ki profile timeline dekh raha hoon, toh wo bhi update ho jaye
+      // 2. Agar main currently isi specific user ki profile timeline dekh raha hoon, toh wo bhi update ho jaye
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.authorId) {
-          if (data.visibility === "public" || (data.visibility === "friends" && data.friends.includes(userId))) {
+          if (
+            data.visibility === "public" ||
+            (data.visibility === "friends" && data.friends.includes(userId))
+          ) {
             fetchPublicUserPosts(data.authorId);
           }
+        }
+        return prev;
+      });
+    });
+
+    // 💬 Real-time Comment Addition (Instant UI update!)
+    newSocket.on("comment_added", (data) => {
+      // 1. Home Feed posts update
+      setHomeFeedPosts((prev) =>
+        prev.map((post) => {
+          if (post._id === data.postId) {
+            const comments = post.comments || [];
+            if (comments.some((c) => c._id === data.comment._id)) return post;
+            return { ...post, comments: [...comments, data.comment] };
+          }
+          return post;
+        }),
+      );
+
+      // 2. User profile posts update
+      setPublicUserPosts((prev) =>
+        prev.map((post) => {
+          if (post._id === data.postId) {
+            const comments = post.comments || [];
+            if (comments.some((c) => c._id === data.comment._id)) return post;
+            return { ...post, comments: [...comments, data.comment] };
+          }
+          return post;
+        }),
+      );
+
+      // 3. Current open comment modal update
+      setActiveCommentPost((prev) => {
+        if (prev && prev._id === data.postId) {
+          const comments = prev.comments || [];
+          if (comments.some((c) => c._id === data.comment._id)) return prev;
+          return { ...prev, comments: [...comments, data.comment] };
+        }
+        return prev;
+      });
+    });
+
+    // 🌟 Real-time Post Reaction update
+    newSocket.on("post_reacted", (data) => {
+      // 1. Home feed posts refresh
+      setHomeFeedPosts((prev) =>
+        prev.map((post) => {
+          if (post._id === data.postId) {
+            return { ...post, reactions: data.reactions };
+          }
+          return post;
+        }),
+      );
+
+      // 2. User profile posts refresh
+      setPublicUserPosts((prev) =>
+        prev.map((post) => {
+          if (post._id === data.postId) {
+            return { ...post, reactions: data.reactions };
+          }
+          return post;
+        }),
+      );
+
+      // 3. Active open modal post comments refresh
+      setActiveCommentPost((prev) => {
+        if (prev && prev._id === data.postId) {
+          return { ...prev, reactions: data.reactions };
+        }
+        return prev;
+      });
+
+      // 4. Active open reactions modal details refresh
+      setActiveReactionsPost((prev) => {
+        if (prev && prev._id === data.postId) {
+          return { ...prev, reactions: data.reactions };
         }
         return prev;
       });
@@ -833,7 +1051,9 @@ export default function Dashboard({ userData, onLogout }) {
     // 🚫 Real-time Deactivation (Clear deactivated user's posts instantly - Naya Code)
     newSocket.on("social_deactivated", (data) => {
       // 1. Timeline feed se deactivated user ke posts foran delete karo
-      setHomeFeedPosts((prev) => prev.filter((post) => post.author._id !== data.userId));
+      setHomeFeedPosts((prev) =>
+        prev.filter((post) => post.author._id !== data.userId),
+      );
 
       // 2. Agar hum currently isi user ki profile dekh rahe hain, toh use close kar do
       setSelectedPublicUser((prev) => {
@@ -884,7 +1104,7 @@ export default function Dashboard({ userData, onLogout }) {
 
   const markAllAsRead = () => markAsRead("all");
 
-  const handleExternalTransfer = async () => {
+    const handleExternalTransfer = async () => {
     setShowExternalConfirm(false);
     setLoading(true);
     try {
@@ -906,31 +1126,31 @@ export default function Dashboard({ userData, onLogout }) {
       const data = await res.json();
 
       if (res.ok) {
-        setToast({
-          title: "Transfer Successful 🎉",
-          msg: `PKR ${externalForm.amount} sent to ${externalForm.bankName}!`,
-          type: "success",
-        });
-        setExternalForm({
-          bankName: "Meezan Bank",
-          accountNumber: "",
-          amount: "",
-        });
-        fetchData();
-        fetchNotifications();
+        if (data.requiresOtp) {
+          setPendingTx({
+            type: "external-transfer",
+            bankName: externalForm.bankName,
+            accountNumber: externalForm.accountNumber,
+            amount: Number(externalForm.amount),
+          });
+          setOtpPurpose("transaction");
+          setShowOtpModal(true);
+        } else {
+          setToast({
+            title: "Transfer Successful 🎉",
+            msg: `PKR ${externalForm.amount} sent to ${externalForm.bankName}!`,
+            type: "success",
+          });
+          setExternalForm({ bankName: "Meezan Bank", accountNumber: "", amount: "" });
+          fetchData();
+          fetchNotifications();
+        }
       } else {
-        setToast({
-          title: "Transfer Failed ❌",
-          msg: data.message,
-          type: "error",
-        });
+        setToast({ title: "Transfer Failed ❌", msg: data.message, type: "error" });
+        fetchData();
       }
     } catch (err) {
-      setToast({
-        title: "Network Error ❌",
-        msg: "Connection failed. Please try again.",
-        type: "error",
-      });
+      setToast({ title: "Network Error ❌", msg: "Connection failed.", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -968,6 +1188,18 @@ export default function Dashboard({ userData, onLogout }) {
       setSendForm((prev) => ({ ...prev, recipientName: "" }));
       return;
     }
+
+    // 🛡️ Self-send check: Apne number par paise bejne se rokna
+    if (profile?.mobileNumber && sendForm.recipient === profile.mobileNumber) {
+      setSendForm((prev) => ({ ...prev, recipientName: "You cannot send money to yourself" }));
+      setToast({
+        title: "Invalid Recipient",
+        msg: "You cannot send money to your own mobile number.",
+        type: "error",
+      });
+      return;
+    }
+
     try {
       const res = await fetch(
         `http://192.168.43.54:5000/api/profile/mobile/${sendForm.recipient}`,
@@ -995,6 +1227,15 @@ export default function Dashboard({ userData, onLogout }) {
         msg: "Wallet is Frozen",
         type: "error",
       });
+
+    // 🛡️ Final Check: Block self-send
+    if (profile?.mobileNumber && sendForm.recipient === profile.mobileNumber) {
+      return setToast({
+        title: "Error",
+        msg: "You cannot send money to yourself.",
+        type: "error",
+      });
+    }
 
     let currentName = sendForm.recipientName;
 
@@ -1038,7 +1279,7 @@ export default function Dashboard({ userData, onLogout }) {
     setShowSendConfirm(true);
   };
 
-  const handleSend = async () => {
+    const handleSend = async () => {
     setLoading(true);
     setShowSendConfirm(false);
     try {
@@ -1058,14 +1299,20 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        // 💸 Instantly update balance on screen (Real-time Feel!)
-        setBalance((prev) => prev - Number(sendForm.amount));
-        setToast({ title: "Success", msg: "Money Sent!", type: "success" });
-        setSendForm({ recipient: "", amount: "", note: "", recipientName: "" });
-        fetchData();
-        fetchNotifications();
+        if (data.requiresOtp) {
+          setPendingTx({ type: "send-money", recipientMobile: sendForm.recipient, amount: Number(sendForm.amount) });
+          setOtpPurpose("transaction");
+          setShowOtpModal(true);
+        } else {
+          setBalance((prev) => prev - Number(sendForm.amount));
+          setToast({ title: "Success", msg: "Money Sent!", type: "success" });
+          setSendForm({ recipient: "", amount: "", note: "", recipientName: "" });
+          fetchData();
+          fetchNotifications();
+        }
       } else {
         setToast({ title: "Failed", msg: data.message, type: "error" });
+        fetchData();
       }
     } catch {
       setToast({ title: "Error", msg: "Network error", type: "error" });
@@ -1145,6 +1392,7 @@ export default function Dashboard({ userData, onLogout }) {
 
   const requestFreeze = async () => {
     try {
+      setOtpPurpose("freeze"); // 🟢 Purpose freeze set karein taake modal ko pata chale
       await fetch("http://192.168.43.54:5000/api/auth/send-freeze-otp", {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken()}` },
@@ -1179,6 +1427,107 @@ export default function Dashboard({ userData, onLogout }) {
       }
     } catch {
       setToast({ title: "Error", msg: "Network error", type: "error" });
+    }
+  };
+    // 🟢 Confirm and complete any large transaction using OTP dynamically
+  const confirmTransactionWithOtp = async () => {
+    if (!pendingTx) return;
+    setLoading(true);
+    try {
+      let url = "";
+      let bodyData = {};
+
+      // Route parameters dynamically based on transaction type
+      if (pendingTx.type === "send-money" || pendingTx.type === "qr-send") {
+        url = "http://192.168.43.54:5000/api/wallet/send-money";
+        bodyData = { recipientMobile: pendingTx.recipientMobile, amount: pendingTx.amount, otp };
+      } else if (pendingTx.type === "pay-bill") {
+        url = "http://192.168.43.54:5000/api/wallet/pay-selected-bills";
+        bodyData = { invoiceIds: pendingTx.invoiceIds, otp };
+      } else if (pendingTx.type === "accept-split") {
+        url = "http://192.168.43.54:5000/api/wallet/accept-split";
+        bodyData = { splitId: pendingTx.splitId, otp };
+      } else if (pendingTx.type === "external-transfer") {
+        url = "http://192.168.43.54:5000/api/wallet/send-external-money";
+        bodyData = {
+          bankName: pendingTx.bankName,
+          accountNumber: pendingTx.accountNumber,
+          amount: pendingTx.amount,
+          otp,
+        };
+      }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify(bodyData),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setToast({ title: "Success", msg: data.message || "Completed!", type: "success" });
+        setShowOtpModal(false);
+        setOtp("");
+        setPendingTx(null);
+        fetchData();
+        fetchNotifications();
+
+        // Dynamic UI Resets based on Transaction type completed
+        if (pendingTx.type === "send-money") {
+          setSendForm({ recipient: "", amount: "", note: "", recipientName: "" });
+        } else if (pendingTx.type === "qr-send") {
+          setQrScanResult(null);
+          setQrRecipient(null);
+          setQrAmount("");
+          setQrView(null);
+        } else if (pendingTx.type === "pay-bill") {
+          setSelectedInvoiceIds([]);
+          setBillFetched(false);
+          setActiveInvoices([]);
+          setBillForm({ billType: "Electricity Bill", consumerNumber: "" });
+        } else if (pendingTx.type === "accept-split") {
+          fetchSplits();
+        } else if (pendingTx.type === "external-transfer") {
+          setExternalForm({ bankName: "Meezan Bank", accountNumber: "", amount: "" });
+        }
+            } else {
+        setToast({ title: "Failed", msg: data.message, type: "error" });
+        
+        // Clear incorrect OTP input taake user naya OTP daal sake
+        setOtp("");
+
+        // Check karein ke kya wallet freeze/lock ho gaya hai?
+        const isWalletFrozenNow = data.message && (
+          data.message.toLowerCase().includes("frozen") || 
+          data.message.toLowerCase().includes("locked") ||
+          data.message.toLowerCase().includes("failed attempts")
+        );
+
+        // Modal ko sirf tabhi band karein jab account freeze ho chuka ho
+        if (isWalletFrozenNow) {
+          setShowOtpModal(false);
+          setPendingTx(null);
+        }
+        
+        fetchData(); // Dashboard data refresh
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error during verification", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🟢 Handles redirection when user clicks submit inside OTP Modal
+  const handleOtpSubmit = () => {
+    if (otpPurpose === "transaction") {
+      confirmTransactionWithOtp();
+    } else {
+      confirmFreeze();
     }
   };
 
@@ -1260,7 +1609,7 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   // --- QR SCANNER SEND HANDLER ---
-  const handleQrSend = async () => {
+    const handleQrSend = async () => {
     if (!qrScanResult || !qrAmount || Number(qrAmount) <= 0) return;
     setLoading(true);
     setShowQrConfirm(false);
@@ -1281,40 +1630,37 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        // 💸 Instantly update balance on screen (Real-time Feel!)
-        setBalance((prev) => prev - Number(qrAmount));
-
-        setToast({
-          title: "Transfer Successful ✅",
-          msg: `PKR ${qrAmount} sent to ${qrRecipient?.firstName} ${qrRecipient?.lastName}`,
-          type: "success",
-        });
-        setQrScanResult(null);
-        setQrRecipient(null);
-        setQrAmount("");
-        setQrView(null); // 🟢 Wapas selection screen par redirect karega
-        fetchData();
-        fetchNotifications();
+        if (data.requiresOtp) {
+          setPendingTx({ type: "qr-send", recipientMobile: qrScanResult, amount: Number(qrAmount) });
+          setOtpPurpose("transaction");
+          setShowOtpModal(true);
+        } else {
+          setBalance((prev) => prev - Number(qrAmount));
+          setToast({
+            title: "Transfer Successful ✅",
+            msg: `PKR ${qrAmount} sent to ${qrRecipient?.firstName} ${qrRecipient?.lastName}`,
+            type: "success",
+          });
+          setQrScanResult(null);
+          setQrRecipient(null);
+          setQrAmount("");
+          setQrView(null);
+          fetchData();
+          fetchNotifications();
+        }
       } else {
-        setToast({
-          title: "Transfer Failed ❌",
-          msg: data.message,
-          type: "error",
-        });
+        setToast({ title: "Failed", msg: data.message, type: "error" });
+        fetchData();
       }
     } catch {
-      setToast({
-        title: "Error",
-        msg: "Network error. Please try again.",
-        type: "error",
-      });
+      setToast({ title: "Error", msg: "Transfer failed", type: "error" });
     } finally {
       setLoading(false);
     }
   };
 
   // --- NEW FEATURE ACTIONS ---
-  const handlePayBill = async () => {
+    const handlePayBill = async () => {
     if (isFrozen)
       return setToast({
         title: "Wallet Frozen",
@@ -1342,19 +1688,26 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        setToast({
-          title: "Payment Successful",
-          msg: `${selectedInvoiceIds.length} bill(s) paid. PKR ${data.totalPaid.toLocaleString()} deducted from your wallet.`,
-          type: "success",
-        });
-        setSelectedInvoiceIds([]);
-        setBillFetched(false);
-        setActiveInvoices([]);
-        setBillForm({ billType: "Electricity Bill", consumerNumber: "" });
-        fetchData();
-        fetchNotifications();
+        if (data.requiresOtp) {
+          setPendingTx({ type: "pay-bill", invoiceIds: selectedInvoiceIds });
+          setOtpPurpose("transaction");
+          setShowOtpModal(true);
+        } else {
+          setToast({
+            title: "Payment Successful",
+            msg: `${selectedInvoiceIds.length} bill(s) paid. PKR ${data.totalPaid.toLocaleString()} deducted from your wallet.`,
+            type: "success",
+          });
+          setSelectedInvoiceIds([]);
+          setBillFetched(false);
+          setActiveInvoices([]);
+          setBillForm({ billType: "Electricity Bill", consumerNumber: "" });
+          fetchData();
+          fetchNotifications();
+        }
       } else {
         setToast({ title: "Failed", msg: data.message, type: "error" });
+        fetchData();
       }
     } catch {
       setToast({ title: "Error", msg: "Network error", type: "error" });
@@ -1524,6 +1877,36 @@ export default function Dashboard({ userData, onLogout }) {
       setSplitForm({ ...splitForm, friends: newFriends });
       return;
     }
+
+    // 🛡️ Check 1: Apna number add karne se rokna
+    if (profile?.mobileNumber && mobileNumber === profile.mobileNumber) {
+      const newFriends = [...splitForm.friends];
+      newFriends[index].name = "You cannot add yourself";
+      setSplitForm({ ...splitForm, friends: newFriends });
+      setToast({
+        title: "Invalid Participant",
+        msg: "You cannot add your own number to the split list.",
+        type: "error",
+      });
+      return;
+    }
+
+    // 🛡️ Check 2: Duplicate number add karne se rokna
+    const isDuplicate = splitForm.friends.some(
+      (f, i) => i !== index && f.mobileNumber === mobileNumber
+    );
+    if (isDuplicate) {
+      const newFriends = [...splitForm.friends];
+      newFriends[index].name = "Already added";
+      setSplitForm({ ...splitForm, friends: newFriends });
+      setToast({
+        title: "Duplicate Participant",
+        msg: "This number has already been added to the list.",
+        type: "error",
+      });
+      return;
+    }
+
     try {
       const res = await fetch(
         `http://192.168.43.54:5000/api/profile/mobile/${mobileNumber}`,
@@ -1552,8 +1935,12 @@ export default function Dashboard({ userData, onLogout }) {
       });
     }
 
+
     const validFriends = splitForm.friends.filter(
-      (f) => f.name && f.name !== "User not found",
+      (f) => f.name && 
+             f.name !== "User not found" && 
+             f.name !== "Already added" && 
+             f.name !== "You cannot add yourself",
     );
     if (validFriends.length === 0) {
       return setToast({
@@ -1561,6 +1948,28 @@ export default function Dashboard({ userData, onLogout }) {
         msg: "Add at least one valid friend",
         type: "error",
       });
+    }
+
+         // 🛡️ Check: Custom split me kisi bhi friend ki amount 0 ya negative nahi honi chahiye
+    if (splitForm.isCustom) {
+      const hasZeroOrInvalid = validFriends.some((f) => Number(f.amount || 0) <= 0);
+      if (hasZeroOrInvalid) {
+        return setToast({
+          title: "Error",
+          msg: "Each person's split amount must be greater than 0",
+          type: "error",
+        });
+      }
+
+      // 🛡️ Check: Custom splits ka total sum total bill amount se zyada nahi hona chahiye
+      const totalCustomSum = validFriends.reduce((sum, f) => sum + Number(f.amount || 0), 0);
+      if (totalCustomSum > Number(splitForm.totalAmount)) {
+        return setToast({
+          title: "Error",
+          msg: `The sum of custom split amounts (PKR ${totalCustomSum}) cannot exceed the total bill amount (PKR ${splitForm.totalAmount})`,
+          type: "error",
+        });
+      }
     }
 
     const splitCount = validFriends.length + 1; // including requester
@@ -1611,7 +2020,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  const handleAcceptSplit = async (splitId) => {
+    const handleAcceptSplit = async (splitId, amount) => {
     if (isFrozen)
       return setToast({
         title: "Error",
@@ -1633,16 +2042,19 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        setToast({
-          title: "Success",
-          msg: "Split Bill Paid!",
-          type: "success",
-        });
-        fetchData();
-        fetchSplits();
-        fetchNotifications();
+        if (data.requiresOtp) {
+          setPendingTx({ type: "accept-split", splitId, amount });
+          setOtpPurpose("transaction");
+          setShowOtpModal(true);
+        } else {
+          setToast({ title: "Success", msg: "Split Bill Paid!", type: "success" });
+          fetchData();
+          fetchSplits();
+          fetchNotifications();
+        }
       } else {
         setToast({ title: "Failed", msg: data.message, type: "error" });
+        fetchData();
       }
     } catch {
       setToast({ title: "Error", msg: "Network error", type: "error" });
@@ -1846,31 +2258,55 @@ export default function Dashboard({ userData, onLogout }) {
         <form className="mt-4" onSubmit={initiateSend}>
           <div className="form-group">
             <label className="form-label">Recipient Mobile</label>
-            <input
-              className="form-input"
-              placeholder="03001234567"
-              value={sendForm.recipient}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, "");
-                setSendForm({ ...sendForm, recipient: val, recipientName: "" });
-              }}
-              onBlur={fetchRecipientName}
-              required
-              disabled={isFrozen}
-            />
+            <div style={{ display: "flex", gap: "10px" }}>
+              <input
+                className="form-input"
+                placeholder="03001234567"
+                value={sendForm.recipient}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, "");
+                  setSendForm({ ...sendForm, recipient: val, recipientName: "" });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault(); // Form submit block karein
+                    fetchRecipientName();
+                  }
+                }}
+                required
+                disabled={isFrozen}
+              />
+              <button
+                type="button"
+                onClick={fetchRecipientName}
+                disabled={isFrozen || !sendForm.recipient}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: "10px",
+                  border: "1px solid #6366f1",
+                  background: sendForm.recipient ? "#6366f1" : "rgba(255,255,255,0.05)",
+                  color: sendForm.recipient ? "white" : "#94a3b8",
+                  fontWeight: "bold",
+                  cursor: sendForm.recipient ? "pointer" : "not-allowed",
+                  transition: "all 0.3s ease",
+                }}
+              >
+                Fetch
+              </button>
+            </div>
             {sendForm.recipientName && (
               <div
                 style={{
                   fontSize: "0.85rem",
                   marginTop: "5px",
                   color:
-                    sendForm.recipientName === "User not found"
+                    sendForm.recipientName === "User not found" || sendForm.recipientName === "You cannot send money to yourself"
                       ? "#ef4444"
                       : "#10b981",
                   fontWeight: 500,
                 }}
               >
-                {sendForm.recipientName !== "User not found"
+                {sendForm.recipientName !== "User not found" && sendForm.recipientName !== "You cannot send money to yourself"
                   ? `Sending to: ${sendForm.recipientName}`
                   : sendForm.recipientName}
               </div>
@@ -2379,7 +2815,7 @@ export default function Dashboard({ userData, onLogout }) {
                   <Clock size={18} /> Pending Request
                 </button>
               )}
-                            {selectedPublicUser.status === "RECEIVED" && (
+              {selectedPublicUser.status === "RECEIVED" && (
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     className="primary-button"
@@ -2397,7 +2833,7 @@ export default function Dashboard({ userData, onLogout }) {
                       handleAcceptFriendRequest(
                         selectedPublicUser.requestId,
                         selectedPublicUser.firstName,
-                      )
+                      );
                     }}
                   >
                     <Check size={16} /> Accept
@@ -2421,314 +2857,267 @@ export default function Dashboard({ userData, onLogout }) {
                   </button>
                 </div>
               )}
-               {selectedPublicUser.status === "FRIENDS" && (
+              {selectedPublicUser.status === "FRIENDS" && (
                 <div
                   key="friends-container"
                   style={{
                     display: "flex",
-                    gap: "10px", 
+                    gap: "10px",
                   }}
                 >
                   <button
-  key="friends-label"
-  className="primary-button"
-  style={{
-    background: "#10b981",
-    flex: 1, 
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "5px",
-    pointerEvents: "none",
-  }}
->
-  <UserCheck size={16} /> Friends
-</button>
+                    key="friends-label"
+                    className="primary-button"
+                    style={{
+                      background: "#10b981",
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "5px",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <UserCheck size={16} /> Friends
+                  </button>
 
-{/* UNFRIEND BUTTON */}
-<button
-  key="unfriend-action-btn"
-  className="primary-button"
-  style={{
-    background: "#ef4444",
-    color: "white",
-    flex: 1, 
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "5px",
-  }}
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (window.lastAcceptTime && Date.now() - window.lastAcceptTime < 1000) return;
-    setSelectedPublicUser({...selectedPublicUser, showUnfriendConfirm: true});
-  }}
->
-  <UserMinus size={16} /> Unfriend
-</button>
+                  {/* UNFRIEND BUTTON */}
+                  <button
+                    key="unfriend-action-btn"
+                    className="primary-button"
+                    style={{
+                      background: "#ef4444",
+                      color: "white",
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "5px",
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (
+                        window.lastAcceptTime &&
+                        Date.now() - window.lastAcceptTime < 1000
+                      )
+                        return;
+                      setSelectedPublicUser({
+                        ...selectedPublicUser,
+                        showUnfriendConfirm: true,
+                      });
+                    }}
+                  >
+                    <UserMinus size={16} /> Unfriend
+                  </button>
                 </div>
+              )}
+              {selectedPublicUser.status === "SELF" && (
+                <button
+                  onClick={() => setShowDeactivateConfirm(true)}
+                  style={{
+                    background: "none",
+                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                    color: "#ef4444",
+                    padding: "8px 14px",
+                    borderRadius: "10px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    width: "100%",
+                  }}
+                >
+                  🗑️ Deactivate Social
+                </button>
               )}
 
               {/* CUSTOM UNFRIEND MODAL */}
               {selectedPublicUser.showUnfriendConfirm && (
-                <div className="modal-overlay" onMouseDown={(e) => e.stopPropagation()} onClick={() => setSelectedPublicUser({...selectedPublicUser, showUnfriendConfirm: false})}>
-                  <div className="modal-content" onMouseDown={(e) => e.stopPropagation()} onClick={e => e.stopPropagation()} style={{ maxWidth: "400px", textAlign: "center" }}>
-                    <div style={{ background: "rgba(239, 68, 68, 0.1)", width: "60px", height: "60px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <div
+                  className="modal-overlay"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() =>
+                    setSelectedPublicUser({
+                      ...selectedPublicUser,
+                      showUnfriendConfirm: false,
+                    })
+                  }
+                >
+                  <div
+                    className="modal-content"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ maxWidth: "400px", textAlign: "center" }}
+                  >
+                    <div
+                      style={{
+                        background: "rgba(239, 68, 68, 0.1)",
+                        width: "60px",
+                        height: "60px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 20px",
+                      }}
+                    >
                       <UserMinus size={30} color="#ef4444" />
                     </div>
-                    <h3 style={{ color: "#f8fafc", marginBottom: "10px", fontSize: "1.2rem" }}>Unfriend @{selectedPublicUser.username}?</h3>
-                    <p style={{ color: "#94a3b8", marginBottom: "25px", fontSize: "0.95rem", lineHeight: "1.5" }}>
-                      Are you sure you want to remove <strong>{selectedPublicUser.firstName}</strong> from your friends list? Unfriending will also remove you from their friends list.
+                    <h3
+                      style={{
+                        color: "#f8fafc",
+                        marginBottom: "10px",
+                        fontSize: "1.2rem",
+                      }}
+                    >
+                      Unfriend @{selectedPublicUser.username}?
+                    </h3>
+                    <p
+                      style={{
+                        color: "#94a3b8",
+                        marginBottom: "25px",
+                        fontSize: "0.95rem",
+                        lineHeight: "1.5",
+                      }}
+                    >
+                      Are you sure you want to remove{" "}
+                      <strong>{selectedPublicUser.firstName}</strong> from your
+                      friends list? Unfriending will also remove you from their
+                      friends list.
                     </p>
                     <div style={{ display: "flex", gap: "12px" }}>
-  <button
-    className="primary-button"
-    style={{ background: "#ef4444", color: "white", flex: 1, padding: "12px" }}
-    onClick={() => {
-      setSelectedPublicUser({...selectedPublicUser, showUnfriendConfirm: false});
-      handleRemoveFriend(selectedPublicUser.id, selectedPublicUser.firstName);
-    }}
-  >
-    Yes, Unfriend
-  </button>
-  <button
-    className="primary-button"
-    style={{ background: "rgba(255, 255, 255, 0.1)", color: "white", flex: 1, padding: "12px" }}
-    onClick={() => setSelectedPublicUser({...selectedPublicUser, showUnfriendConfirm: false})}
-  >
-    Cancel
-  </button>
-  
-</div>
+                      <button
+                        className="primary-button"
+                        style={{
+                          background: "#ef4444",
+                          color: "white",
+                          flex: 1,
+                          padding: "12px",
+                        }}
+                        onClick={() => {
+                          setSelectedPublicUser({
+                            ...selectedPublicUser,
+                            showUnfriendConfirm: false,
+                          });
+                          handleRemoveFriend(
+                            selectedPublicUser.id,
+                            selectedPublicUser.firstName,
+                          );
+                        }}
+                      >
+                        Yes, Unfriend
+                      </button>
+                      <button
+                        className="primary-button"
+                        style={{
+                          background: "rgba(255, 255, 255, 0.1)",
+                          color: "white",
+                          flex: 1,
+                          padding: "12px",
+                        }}
+                        onClick={() =>
+                          setSelectedPublicUser({
+                            ...selectedPublicUser,
+                            showUnfriendConfirm: false,
+                          })
+                        }
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-                 {/* 👥 My Friends List Section (With Hide/Show & Modern UI) */}
-        {selectedPublicUser.status === "SELF" && friendsList.length > 0 && (
-          <div style={{ marginBottom: "25px" }}>
-            {/* 🔽 Toggle Button */}
-            <button
-              style={{
-                background: "rgba(99, 102, 241, 0.1)",
-                color: "#818cf8",
-                border: "1px solid rgba(99, 102, 241, 0.2)",
-                padding: "8px 16px",
-                borderRadius: "10px",
-                cursor: "pointer",
-                fontSize: "0.95rem",
-                fontWeight: 600,
-                marginBottom: "15px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px"
-              }}
-              onClick={() => setSelectedPublicUser({...selectedPublicUser, showFriends: !selectedPublicUser.showFriends})}
-            >
-              👥 My Friends ({friendsList.length})
-            </button>
-
-            {/* 📋 List of Friends (Yeh sirf tab dikhegi jab showFriends true hoga) */}
-            {selectedPublicUser.showFriends && (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column", /* Isko vertical list bana diya */
-                  gap: "10px",
-                }}
-              >
-                {friendsList.map((friend) => (
-                  <div
-                    key={friend._id}
-                    onClick={() => {
-                      setSelectedPublicUser({
-                        id: friend._id,
-                        firstName: friend.firstName,
-                        lastName: friend.lastName,
-                        username: friend.username,
-                        profilePicture: friend.profilePicture,
-                        status: "FRIENDS",
-                      });
-                      fetchPublicUserPosts(friend._id);
-                    }}
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      padding: "10px 15px",
-                      borderRadius: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center", /* Sab center me align */
-                      gap: "15px", /* DP aur text ke darmiyan space */
-                      transition: "background 0.2s",
-                    }}
-                  >
-                    {/* DP (Left Side) */}
-                    <div
-                      style={{
-                        width: "45px",
-                        height: "45px",
-                        borderRadius: "50%",
-                        background:
-                          "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        color: "white",
-                        fontSize: "1.1rem"
-                      }}
-                    >
-                      {friend.profilePicture ? (
-                        <img
-                          src={friend.profilePicture}
-                          alt="Avatar"
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRadius: "50%",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        friend.firstName.charAt(0).toUpperCase()
-                      )}
-                    </div>
-                    
-                    {/* Names (Right Side of DP) */}
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <div style={{ color: "#f8fafc", fontWeight: 600, fontSize: "0.95rem" }}>
-                        @{friend.username}
-                      </div>
-                      <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
-                        {friend.firstName}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 🟢 3 Privacy Tabs: Public, Friends Only, Private (Visible only on own profile "SELF") */}
-        {selectedPublicUser.status === "SELF" && (
-          <div
-            style={{
-              display: "flex",
-              gap: "10px",
-              width: "100%",
-              marginBottom: "25px",
-            }}
-          >
-            {["public", "friends", "private"].map((tab) => (
+          {/* 👥 My Friends List Section (With Hide/Show & Modern UI) */}
+          {selectedPublicUser.status === "SELF" && friendsList.length > 0 && (
+            <div style={{ marginBottom: "25px" }}>
+              {/* 🔽 Toggle Button */}
               <button
-                key={tab}
-                onClick={() => setOwnPostPrivacyFilter(tab)}
                 style={{
-                  flex: 1,
-                  padding: "12px",
-                  borderRadius: "12px",
-                  border: "1px solid",
-                  borderColor:
-                    ownPostPrivacyFilter === tab
-                      ? "rgba(99, 102, 241, 0.4)"
-                      : "rgba(255, 255, 255, 0.05)",
-                  background:
-                    ownPostPrivacyFilter === tab
-                      ? "rgba(99, 102, 241, 0.15)"
-                      : "var(--bg-card)",
-                  color: ownPostPrivacyFilter === tab ? "#818cf8" : "#94a3b8",
+                  background: "rgba(99, 102, 241, 0.1)",
+                  color: "#818cf8",
+                  border: "1px solid rgba(99, 102, 241, 0.2)",
+                  padding: "8px 16px",
+                  borderRadius: "10px",
                   cursor: "pointer",
+                  fontSize: "0.95rem",
                   fontWeight: 600,
-                  fontSize: "0.9rem",
-                  transition: "all 0.2s ease",
-                  textTransform: "capitalize",
+                  marginBottom: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
                 }}
+                onClick={() =>
+                  setSelectedPublicUser({
+                    ...selectedPublicUser,
+                    showFriends: !selectedPublicUser.showFriends,
+                  })
+                }
               >
-                {tab === "friends" ? "Friends Only" : tab}
+                👥 My Friends ({friendsList.length})
               </button>
-            ))}
-          </div>
-        )}
 
-
-        {/* User Posts List Section */}
-        <div>
-          <h4
-            style={{
-              color: "#f8fafc",
-              fontSize: "1.2rem",
-              marginBottom: "15px",
-              borderBottom: "1px solid rgba(255,255,255,0.05)",
-              paddingBottom: "10px",
-            }}
-          >
-            Posts by @{selectedPublicUser.username}
-          </h4>
-
-                   {(() => {
-            // 🟢 Agar apni profile ("SELF") hai toh selected tab ke mutabiq filter karein, warna normal posts dikhayein
-            const displayedPosts = selectedPublicUser.status === "SELF"
-              ? publicUserPosts.filter((post) => post.visibility === ownPostPrivacyFilter)
-              : publicUserPosts;
-
-            return displayedPosts.length === 0 ? (
-              <p
-                style={{
-                  textAlign: "center",
-                  padding: "40px",
-                  color: "#94a3b8",
-                }}
-              >
-                No posts shared by this user yet.
-              </p>
-            ) : (
-              displayedPosts.map((post) => (
+              {/* 📋 List of Friends (Yeh sirf tab dikhegi jab showFriends true hoga) */}
+              {selectedPublicUser.showFriends && (
                 <div
-                  key={post._id}
                   style={{
-                    background: "var(--bg-card)",
-                    padding: "20px",
-                    borderRadius: "16px",
-                    border: "1px solid rgba(255, 255, 255, 0.05)",
-                    marginBottom: "15px",
+                    display: "flex",
+                    flexDirection: "column" /* Isko vertical list bana diya */,
+                    gap: "10px",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: "10px",
-                    }}
-                  >
+                  {friendsList.map((friend) => (
                     <div
+                      key={friend._id}
+                      onClick={() => {
+                        setSelectedPublicUser({
+                          id: friend._id,
+                          firstName: friend.firstName,
+                          lastName: friend.lastName,
+                          username: friend.username,
+                          profilePicture: friend.profilePicture,
+                          status: "FRIENDS",
+                        });
+                        fetchPublicUserPosts(friend._id);
+                      }}
                       style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid rgba(255,255,255,0.05)",
+                        padding: "10px 15px",
+                        borderRadius: "12px",
+                        cursor: "pointer",
                         display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
+                        alignItems: "center" /* Sab center me align */,
+                        gap: "15px" /* DP aur text ke darmiyan space */,
+                        transition: "background 0.2s",
                       }}
                     >
+                      {/* DP (Left Side) */}
                       <div
                         style={{
-                          width: "40px",
-                          height: "40px",
+                          width: "45px",
+                          height: "45px",
                           borderRadius: "50%",
-                          background: "#6366f1",
+                          background:
+                            "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          fontWeight: 600,
+                          fontWeight: 700,
                           color: "white",
-                      }}
+                          fontSize: "1.1rem",
+                        }}
                       >
-                        {post.author.profilePicture ? (
+                        {friend.profilePicture ? (
                           <img
-                            src={post.author.profilePicture}
+                            src={friend.profilePicture}
                             alt="Avatar"
                             style={{
                               width: "100%",
@@ -2738,95 +3127,428 @@ export default function Dashboard({ userData, onLogout }) {
                             }}
                           />
                         ) : (
-                          post.author.firstName.charAt(0).toUpperCase()
+                          friend.firstName.charAt(0).toUpperCase()
                         )}
                       </div>
-                      <div>
-                        <div style={{ color: "#f8fafc", fontWeight: 600 }}>
-                          {post.author.firstName} {post.author.lastName}
+
+                      {/* Names (Right Side of DP) */}
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <div
+                          style={{
+                            color: "#f8fafc",
+                            fontWeight: 600,
+                            fontSize: "0.95rem",
+                          }}
+                        >
+                          @{friend.username}
                         </div>
                         <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
-                          {new Date(post.createdAt).toLocaleDateString()}{" "}
-                          {new Date(post.createdAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
+                          {friend.firstName}
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-                    {/* Right Side: Visibility Badge */}
-                    <div
-                      style={{
-                        color: "#94a3b8",
-                        fontSize: "0.75rem",
-                        background: "rgba(255, 255, 255, 0.05)",
-                        padding: "4px 8px",
-                        borderRadius: "6px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
-                    >
-                      {post.visibility === "public"
-                        ? "🌍 Public"
-                        : post.visibility === "friends"
-                        ? "👥 Friends"
-                        : "🔒 Private"}
-                    </div>
-                  </div>
-                  <p
+          {/* 🟢 3 Privacy Tabs: Public, Friends Only, Private (Visible only on own profile "SELF") */}
+          {selectedPublicUser.status === "SELF" && (
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                width: "100%",
+                marginBottom: "25px",
+              }}
+            >
+              {["public", "friends", "private"].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setOwnPostPrivacyFilter(tab)}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    borderRadius: "12px",
+                    border: "1px solid",
+                    borderColor:
+                      ownPostPrivacyFilter === tab
+                        ? "rgba(99, 102, 241, 0.4)"
+                        : "rgba(255, 255, 255, 0.05)",
+                    background:
+                      ownPostPrivacyFilter === tab
+                        ? "rgba(99, 102, 241, 0.15)"
+                        : "var(--bg-card)",
+                    color: ownPostPrivacyFilter === tab ? "#818cf8" : "#94a3b8",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    transition: "all 0.2s ease",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {tab === "friends" ? "Friends Only" : tab}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* User Posts List Section */}
+          <div>
+            <h4
+              style={{
+                color: "#f8fafc",
+                fontSize: "1.2rem",
+                marginBottom: "15px",
+                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                paddingBottom: "10px",
+              }}
+            >
+              Posts by @{selectedPublicUser.username}
+            </h4>
+
+            {(() => {
+              // 🟢 Agar apni profile ("SELF") hai toh selected tab ke mutabiq filter karein, warna normal posts dikhayein
+              const displayedPosts =
+                selectedPublicUser.status === "SELF"
+                  ? publicUserPosts.filter(
+                      (post) => post.visibility === ownPostPrivacyFilter,
+                    )
+                  : publicUserPosts;
+
+              return displayedPosts.length === 0 ? (
+                <p
+                  style={{
+                    textAlign: "center",
+                    padding: "40px",
+                    color: "#94a3b8",
+                  }}
+                >
+                  No posts shared by this user yet.
+                </p>
+              ) : (
+                displayedPosts.map((post) => (
+                  <div
+                    key={post._id}
                     style={{
-                      color: "#cbd5e1",
-                      fontSize: "0.95rem",
-                      lineHeight: "1.5",
-                      margin: 0,
+                      background: "var(--bg-card)",
+                      padding: "20px",
+                      borderRadius: "16px",
+                      border: "1px solid rgba(255, 255, 255, 0.05)",
+                      marginBottom: "15px",
                     }}
                   >
-                    {post.content}
-                  </p>
-                </div>
-              ))
-            );
-          })()}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "50%",
+                            background: "#6366f1",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 600,
+                            color: "white",
+                          }}
+                        >
+                          {post.author.profilePicture ? (
+                            <img
+                              src={post.author.profilePicture}
+                              alt="Avatar"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRadius: "50%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            post.author.firstName.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ color: "#f8fafc", fontWeight: 600 }}>
+                            {post.author.firstName} {post.author.lastName}
+                          </div>
+                          <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
+                            {new Date(post.createdAt).toLocaleDateString()}{" "}
+                            {new Date(post.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: true,
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Side: Visibility Badge */}
+                      <div
+                        style={{
+                          color: "#94a3b8",
+                          fontSize: "0.75rem",
+                          background: "rgba(255, 255, 255, 0.05)",
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        {post.visibility === "public"
+                          ? "🌍 Public"
+                          : post.visibility === "friends"
+                            ? "👥 Friends"
+                            : "🔒 Private"}
+                      </div>
+                    </div>
+                    <p
+                      style={{
+                        color: "#cbd5e1",
+                        fontSize: "0.95rem",
+                        lineHeight: "1.5",
+                        margin: 0,
+                      }}
+                    >
+                      {post.content}
+                    </p>
+                    {/* Reactions Count Summary */}
+                    {post.reactions && post.reactions.length > 0 && (
+                      <div
+                        onClick={() => {
+                          setActiveReactionsPost(post);
+                          setReactionsFilterTab("all");
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontSize: "0.85rem",
+                          color: "#cbd5e1",
+                          marginTop: "10px",
+                          paddingBottom: "8px",
+                          borderBottom: "1px solid rgba(255,255,255,0.03)",
+                          cursor: "pointer",
+                          transition: "color 0.2s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color = "#a5b4fc")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color = "#cbd5e1")
+                        }
+                      >
+                        <span>
+                          {Array.from(
+                            new Set(post.reactions.map((r) => r.type)),
+                          )
+                            .slice(0, 3)
+                            .map((type) => {
+                              const emojis = {
+                                like: "👍",
+                                love: "❤️",
+                                haha: "😆",
+                                sad: "😢",
+                                angry: "😡",
+                              };
+                              return emojis[type];
+                            })
+                            .join("")}
+                        </span>
+                        <span style={{ fontWeight: 500 }}>
+                          {post.reactions.length} reaction
+                          {post.reactions.length > 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* 🟢 Post Action Footer (React & Comment Buttons) */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "20px",
+                        marginTop: "12px",
+                        paddingTop: "10px",
+                        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                      }}
+                    >
+                      {/* React Button & Hover Picker */}
+                      <div
+                        style={{ position: "relative" }}
+                        onMouseEnter={() => setHoveredPostReactId(post._id)}
+                        onMouseLeave={() => setHoveredPostReactId(null)}
+                      >
+                        {(() => {
+                          const myReaction =
+                            post.reactions &&
+                            post.reactions.find(
+                              (r) => (r.user._id || r.user) === userId,
+                            );
+                          const emojiMap = {
+                            like: "👍",
+                            love: "❤️",
+                            haha: "😆",
+                            sad: "😢",
+                            angry: "😡",
+                          };
+                          const labelMap = {
+                            like: "Like",
+                            love: "Love",
+                            haha: "Haha",
+                            sad: "Sad",
+                            angry: "Angry",
+                          };
+                          const colorMap = {
+                            like: "#60a5fa",
+                            love: "#f43f5e",
+                            haha: "#fbbf24",
+                            sad: "#60a5fa",
+                            angry: "#f97316",
+                          };
+
+                          return (
+                            <>
+                              <button
+                                onClick={() =>
+                                  handlePostReact(
+                                    post._id,
+                                    myReaction ? myReaction.type : "like",
+                                  )
+                                }
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: myReaction
+                                    ? colorMap[myReaction.type]
+                                    : "#94a3b8",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  cursor: "pointer",
+                                  fontSize: "0.9rem",
+                                  fontWeight: 600,
+                                  transition: "color 0.2s",
+                                }}
+                              >
+                                {myReaction
+                                  ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
+                                  : "👍 React"}
+                              </button>
+
+                              {/* Hover Reactions Popup */}
+                              {hoveredPostReactId === post._id && (
+                                <div
+                                  style={{
+                                    position: "absolute",
+                                    bottom: "calc(100% - 2px)",
+                                    left: "0",
+                                    background: "#1e293b",
+                                    border:
+                                      "1px solid rgba(255, 255, 255, 0.08)",
+                                    borderRadius: "20px",
+                                    padding: "5px 10px",
+                                    display: "flex",
+                                    gap: "10px",
+                                    zIndex: 10,
+                                    boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+                                  }}
+                                >
+                                  {["like", "love", "haha", "sad", "angry"].map(
+                                    (type) => {
+                                      const emojis = {
+                                        like: "👍",
+                                        love: "❤️",
+                                        haha: "😆",
+                                        sad: "😢",
+                                        angry: "😡",
+                                      };
+                                      return (
+                                        <span
+                                          key={type}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handlePostReact(post._id, type);
+                                          }}
+                                          style={{
+                                            fontSize: "1.3rem",
+                                            cursor: "pointer",
+                                            transition: "transform 0.1s",
+                                          }}
+                                          onMouseEnter={(e) =>
+                                            (e.target.style.transform =
+                                              "scale(1.3)")
+                                          }
+                                          onMouseLeave={(e) =>
+                                            (e.target.style.transform =
+                                              "scale(1)")
+                                          }
+                                        >
+                                          {emojis[type]}
+                                        </span>
+                                      );
+                                    },
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setActiveCommentPost(post);
+                          setCommentText("");
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#94a3b8",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          cursor: "pointer",
+                          fontSize: "0.9rem",
+                          fontWeight: 500,
+                          transition: "color 0.2s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color = "#818cf8")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color = "#94a3b8")
+                        }
+                      >
+                        💬 Comment ({post.comments ? post.comments.length : 0})
+                      </button>
+                    </div>
+                  </div>
+                ))
+              );
+            })()}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
     // 4. MAIN SOCIAL FEED: Default view containing Search, Post Box, Friends & Feed Timeline
     return (
       <div className="view-container">
-        {/* Header jisme Left par title aur Right par Deactivate button hoga */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            marginBottom: "20px",
-          }}
-        >
-
-          <button
-            onClick={() => setShowDeactivateConfirm(true)}
-            style={{
-              background: "none",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              color: "#ef4444",
-              padding: "8px 14px",
-              borderRadius: "10px",
-              fontSize: "0.85rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            🗑️ Deactivate Social
-          </button>
-        </div>
-
         {/* 🔍 Search Bar Section */}
         <div style={{ marginBottom: "20px" }}>
           <form
@@ -3017,7 +3739,6 @@ export default function Dashboard({ userData, onLogout }) {
           </form>
         </div>
 
-
         {/* 📱 Social Feed Timeline Posts (Loaded dynamically) */}
         <div>
           <h4
@@ -3066,7 +3787,7 @@ export default function Dashboard({ userData, onLogout }) {
                   boxShadow: "0 4px 15px rgba(0,0,0,0.1)",
                 }}
               >
-                                <div
+                <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between", // Dono sides par space distribute karne ke liye
@@ -3139,7 +3860,9 @@ export default function Dashboard({ userData, onLogout }) {
                             profilePicture: post.author.profilePicture,
                             status: isMe
                               ? "SELF"
-                              : friendsList.some((f) => f._id === post.author._id)
+                              : friendsList.some(
+                                    (f) => f._id === post.author._id,
+                                  )
                                 ? "FRIENDS"
                                 : "NONE",
                           });
@@ -3159,7 +3882,7 @@ export default function Dashboard({ userData, onLogout }) {
                         {new Date(post.createdAt).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
-                          hour12: true ,
+                          hour12: true,
                         })}
                       </div>
                     </div>
@@ -3178,7 +3901,11 @@ export default function Dashboard({ userData, onLogout }) {
                       gap: "4px",
                     }}
                   >
-                    {post.visibility === "public" ? "🌍 Public" : post.visibility === "friends" ? "👥 Friends" : "🔒 Private"}
+                    {post.visibility === "public"
+                      ? "🌍 Public"
+                      : post.visibility === "friends"
+                        ? "👥 Friends"
+                        : "🔒 Private"}
                   </div>
                 </div>
                 <p
@@ -3191,6 +3918,213 @@ export default function Dashboard({ userData, onLogout }) {
                 >
                   {post.content}
                 </p>
+                {/* Reactions Count Summary */}
+                {post.reactions && post.reactions.length > 0 && (
+                  <div
+                    onClick={() => {
+                      setActiveReactionsPost(post);
+                      setReactionsFilterTab("all");
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "0.85rem",
+                      color: "#cbd5e1",
+                      marginTop: "10px",
+                      paddingBottom: "8px",
+                      borderBottom: "1px solid rgba(255,255,255,0.03)",
+                      cursor: "pointer",
+                      transition: "color 0.2s",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "#a5b4fc")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "#cbd5e1")
+                    }
+                  >
+                    <span>
+                      {Array.from(new Set(post.reactions.map((r) => r.type)))
+                        .slice(0, 3)
+                        .map((type) => {
+                          const emojis = {
+                            like: "👍",
+                            love: "❤️",
+                            haha: "😆",
+                            sad: "😢",
+                            angry: "😡",
+                          };
+                          return emojis[type];
+                        })
+                        .join("")}
+                    </span>
+                    <span style={{ fontWeight: 500 }}>
+                      {post.reactions.length} reaction
+                      {post.reactions.length > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                )}
+
+                {/* 🟢 Post Action Footer (React & Comment Buttons) */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "20px",
+                    marginTop: "12px",
+                    paddingTop: "10px",
+                    borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                  }}
+                >
+                  {/* React Button & Hover Picker */}
+                  <div
+                    style={{ position: "relative" }}
+                    onMouseEnter={() => setHoveredPostReactId(post._id)}
+                    onMouseLeave={() => setHoveredPostReactId(null)}
+                  >
+                    {(() => {
+                      const myReaction =
+                        post.reactions &&
+                        post.reactions.find(
+                          (r) => (r.user._id || r.user) === userId,
+                        );
+                      const emojiMap = {
+                        like: "👍",
+                        love: "❤️",
+                        haha: "😆",
+                        sad: "😢",
+                        angry: "😡",
+                      };
+                      const labelMap = {
+                        like: "Like",
+                        love: "Love",
+                        haha: "Haha",
+                        sad: "Sad",
+                        angry: "Angry",
+                      };
+                      const colorMap = {
+                        like: "#60a5fa",
+                        love: "#f43f5e",
+                        haha: "#fbbf24",
+                        sad: "#60a5fa",
+                        angry: "#f97316",
+                      };
+
+                      return (
+                        <>
+                          <button
+                            onClick={() =>
+                              handlePostReact(
+                                post._id,
+                                myReaction ? myReaction.type : "like",
+                              )
+                            }
+                            style={{
+                              background: "none",
+                              border: "none",
+                              color: myReaction
+                                ? colorMap[myReaction.type]
+                                : "#94a3b8",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              cursor: "pointer",
+                              fontSize: "0.9rem",
+                              fontWeight: 600,
+                              transition: "color 0.2s",
+                            }}
+                          >
+                            {myReaction
+                              ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
+                              : "👍 React"}
+                          </button>
+
+                          {/* Hover Reactions Popup */}
+                          {hoveredPostReactId === post._id && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: "calc(100% - 2px)",
+                                left: "0",
+                                background: "#1e293b",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: "20px",
+                                padding: "5px 10px",
+                                display: "flex",
+                                gap: "10px",
+                                zIndex: 10,
+                                boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+                              }}
+                            >
+                              {["like", "love", "haha", "sad", "angry"].map(
+                                (type) => {
+                                  const emojis = {
+                                    like: "👍",
+                                    love: "❤️",
+                                    haha: "😆",
+                                    sad: "😢",
+                                    angry: "😡",
+                                  };
+                                  return (
+                                    <span
+                                      key={type}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePostReact(post._id, type);
+                                      }}
+                                      style={{
+                                        fontSize: "1.3rem",
+                                        cursor: "pointer",
+                                        transition: "transform 0.1s",
+                                      }}
+                                      onMouseEnter={(e) =>
+                                        (e.target.style.transform =
+                                          "scale(1.3)")
+                                      }
+                                      onMouseLeave={(e) =>
+                                        (e.target.style.transform = "scale(1)")
+                                      }
+                                    >
+                                      {emojis[type]}
+                                    </span>
+                                  );
+                                },
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setActiveCommentPost(post);
+                      setCommentText("");
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#94a3b8",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      cursor: "pointer",
+                      fontSize: "0.9rem",
+                      fontWeight: 500,
+                      transition: "color 0.2s",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "#818cf8")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "#94a3b8")
+                    }
+                  >
+                    💬 Comment ({post.comments ? post.comments.length : 0})
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -4344,7 +5278,7 @@ export default function Dashboard({ userData, onLogout }) {
                           marginBottom: "8px",
                         }}
                       >
-                        <div style={{ flex: 1 }}>
+                                                <div style={{ flex: 1 }}>
                           <input
                             className="form-input"
                             style={{ background: "#f1f5f9", color: "#1e293b" }}
@@ -4360,9 +5294,12 @@ export default function Dashboard({ userData, onLogout }) {
                                 friends: newFriends,
                               });
                             }}
-                            onBlur={() =>
-                              fetchFriendName(index, friend.mobileNumber)
-                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault(); // Default form submit block karein
+                                fetchFriendName(index, friend.mobileNumber);
+                              }
+                            }}
                             required
                             disabled={isFrozen}
                           />
@@ -4386,20 +5323,47 @@ export default function Dashboard({ userData, onLogout }) {
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
+                          marginTop: "8px"
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: "0.85rem",
-                            color:
-                              friend.name === "Not found"
-                                ? "#ef4444"
-                                : "#10b981",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {friend.name || "Enter mobile to fetch name"}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <button
+                            type="button"
+                            onClick={() => fetchFriendName(index, friend.mobileNumber)}
+                            disabled={isFrozen || !friend.mobileNumber}
+                            style={{
+                              padding: "4px 12px",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              borderRadius: "6px",
+                              border: "1px solid #6366f1",
+                              background: friend.mobileNumber ? "#6366f1" : "#e2e8f0",
+                              color: friend.mobileNumber ? "white" : "#94a3b8",
+                              cursor: friend.mobileNumber ? "pointer" : "not-allowed",
+                              transition: "all 0.2s"
+                            }}
+                          >
+                            Fetch
+                          </button>
+                          {friend.name && (
+                            <span
+                              style={{
+                                fontSize: "0.85rem",
+                                color:
+                                  friend.name === "User not found" || 
+                                friend.name === "Not found" ||
+                                friend.name === "Already added" ||
+                                friend.name === "You cannot add yourself"
+                                  ? "#ef4444"
+                                  : "#10b981",
+                                fontWeight: 500,
+                              }}
+                             font-weight={500}
+                            >
+                              {friend.name}
+                            </span>
+                          )}
+                        </div>
                         {splitForm.totalAmount && (
                           <div style={{ textAlign: "right" }}>
                             {splitForm.isCustom ? (
@@ -4418,32 +5382,59 @@ export default function Dashboard({ userData, onLogout }) {
                                 >
                                   PKR
                                 </span>
-                                <input
-                                  style={{
-                                    width: "90px",
-                                    padding: "6px 10px",
-                                    borderRadius: "8px",
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: "0.85rem",
-                                    textAlign: "right",
-                                    fontWeight: 700,
-                                    color: "#6366f1",
-                                  }}
-                                  value={friend.amount || ""}
-                                  placeholder="0"
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(
-                                      /[^0-9]/g,
-                                      "",
-                                    );
+
+                                                              <input
+                                style={{
+                                  width: "90px",
+                                  padding: "6px 10px",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: "0.85rem",
+                                  textAlign: "right",
+                                  fontWeight: 700,
+                                  color: "#6366f1",
+                                  background: (!friend.name || friend.name === "User not found" || friend.name === "Not found") ? "#e2e8f0" : "white",
+                                  cursor: (!friend.name || friend.name === "User not found" || friend.name === "Not found") ? "not-allowed" : "text"
+                                }}
+                                disabled={!friend.name || friend.name === "User not found" || friend.name === "Not found"}
+                                value={friend.amount || ""}
+                                placeholder="0"
+                                                                onChange={(e) => {
+                                  const val = e.target.value.replace(
+                                    /[^0-9]/g,
+                                    "",
+                                  );
+                                  
+                                  // 🛡️ Calculate other friends' total custom amounts
+                                  const otherSum = splitForm.friends.reduce((sum, f, i) => {
+                                    if (i === index) return sum;
+                                    return sum + Number(f.amount || 0);
+                                  }, 0);
+                                  
+                                  // 🛡️ Max allowed share for this specific field
+                                  const maxAllowed = Number(splitForm.totalAmount || 0) - otherSum;
+                                  const newAmount = Number(val || 0);
+
+                                  // 🛡️ If entered value exceeds the limit, cap it automatically
+                                  if (newAmount > maxAllowed) {
+                                    const cappedVal = maxAllowed > 0 ? String(maxAllowed) : "";
                                     const newFriends = [...splitForm.friends];
-                                    newFriends[index].amount = val;
+                                    newFriends[index].amount = cappedVal;
                                     setSplitForm({
                                       ...splitForm,
                                       friends: newFriends,
                                     });
-                                  }}
-                                />
+                                    return;
+                                  }
+
+                                  const newFriends = [...splitForm.friends];
+                                  newFriends[index].amount = val;
+                                  setSplitForm({
+                                    ...splitForm,
+                                    friends: newFriends,
+                                  });
+                                }}
+                              />
                               </div>
                             ) : (
                               <span
@@ -4453,7 +5444,7 @@ export default function Dashboard({ userData, onLogout }) {
                                 {(
                                   Number(splitForm.totalAmount) /
                                   (splitForm.friends.length + 1)
-                                ).toFixed(0)}
+                                ).toFixed(2)}
                               </span>
                             )}
                           </div>
@@ -4462,59 +5453,106 @@ export default function Dashboard({ userData, onLogout }) {
                     </div>
                   ))}
                 </div>
+
+              </div>
+
+              {/* 📊 Live Custom Split Breakdown */}
+            {splitForm.isCustom &&
+              splitForm.totalAmount &&
+              splitForm.friends.length > 0 &&
+              splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found") && (
                 <div
                   style={{
-                    marginTop: "15px",
-                    padding: "10px",
                     background: "#e0e7ff",
-                    borderRadius: "8px",
-                    fontSize: "0.85rem",
-                    color: "#4338ca",
+                    padding: "15px",
+                    borderRadius: "12px",
+                    color: "#3730a3",
+                    marginTop: "15px",
+                    fontSize: "0.95rem",
                   }}
                 >
-                  Each person (including you) will pay{" "}
-                  <strong>
-                    PKR{" "}
-                    {(
-                      Number(splitForm.totalAmount) /
-                      (splitForm.friends.length + 1)
-                    ).toLocaleString()}
+                  <strong style={{ display: "block", marginBottom: "8px" }}>
+                    Live Split Breakdown:
                   </strong>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {/* Friends custom shares list */}
+                    {splitForm.friends.map((f, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>{f.name} will pay:</span>
+                        <strong>PKR {Number(f.amount || 0).toLocaleString()}</strong>
+                      </div>
+                    ))}
+                    
+                    {/* Divider line */}
+                    <hr style={{ border: "0", borderTop: "1px solid #c7d2fe", margin: "8px 0" }} />
+                    {/* Initiator (You) remainder share */}
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>You will pay:</span>
+                      <strong style={{ 
+                        color: (Number(splitForm.totalAmount) - splitForm.friends.reduce((sum, f) => sum + Number(f.amount || 0), 0)) < 0 ? "#ef4444" : "#3730a3" 
+                      }}>
+                        PKR {(
+                          Number(splitForm.totalAmount) -
+                          splitForm.friends.reduce((sum, f) => sum + Number(f.amount || 0), 0)
+                        ).toLocaleString()}
+                      </strong>
+                    </div>
+                    {/* Warning error if custom amounts exceed total bill */}
+                    {(Number(splitForm.totalAmount) - splitForm.friends.reduce((sum, f) => sum + Number(f.amount || 0), 0)) < 0 && (
+                      <div style={{ color: "#ef4444", fontWeight: 600, marginTop: "5px", fontSize: "0.85rem" }}>
+                        ⚠️ Warning: Sum of custom amounts exceeds total amount by PKR {Math.abs(Number(splitForm.totalAmount) - splitForm.friends.reduce((sum, f) => sum + Number(f.amount || 0), 0)).toLocaleString()}!
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+                            {/* 📊 Live Equal Split Breakdown */}
               {splitForm.totalAmount &&
-                splitForm.friends.some(
-                  (f) => f.name && f.name !== "User not found",
-                ) &&
+                splitForm.friends.length > 0 &&
+                splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found") &&
                 !splitForm.isCustom && (
                   <div
                     style={{
                       background: "#e0e7ff",
                       padding: "15px",
-                      borderRadius: "8px",
+                      borderRadius: "12px",
                       color: "#3730a3",
                       marginTop: "15px",
                       fontSize: "0.95rem",
                     }}
                   >
-                    <strong>Split Calculation:</strong> Total PKR{" "}
-                    {splitForm.totalAmount} divided by{" "}
-                    {splitForm.friends.filter(
-                      (f) => f.name && f.name !== "User not found",
-                    ).length + 1}{" "}
-                    people (including you).
-                    <br />
-                    Each pays automatically:{" "}
-                    <strong>
-                      PKR{" "}
-                      {(
-                        splitForm.totalAmount /
-                        (splitForm.friends.filter(
-                          (f) => f.name && f.name !== "User not found",
-                        ).length +
-                          1)
-                      ).toFixed(2)}
+                    <strong style={{ display: "block", marginBottom: "8px" }}>
+                      Live Equal Split Breakdown:
                     </strong>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {/* Friends equal shares */}
+                      {splitForm.friends.map((f, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>{f.name} will pay:</span>
+                          <strong>
+                            PKR {(
+                              Number(splitForm.totalAmount) /
+                              (splitForm.friends.length + 1)
+                            ).toFixed(2)}
+                          </strong>
+                        </div>
+                      ))}
+                      
+                      {/* Divider line */}
+                      <hr style={{ border: "0", borderTop: "1px solid #c7d2fe", margin: "8px 0" }} />
+
+                      {/* Initiator (You) share */}
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>You (Initiator) will pay:</span>
+                        <strong>
+                          PKR {(
+                            Number(splitForm.totalAmount) /
+                            (splitForm.friends.length + 1)
+                          ).toFixed(2)}
+                        </strong>
+                      </div>
+                    </div>
                   </div>
                 )}
               <button
@@ -5171,28 +6209,32 @@ export default function Dashboard({ userData, onLogout }) {
       <div className="main-content">
         <header className="top-header">
           <div className="page-title" style={{ textTransform: "capitalize" }}>
-            {activeTab === "home" ? "Overview" : activeTab === "social" ? "Social Feed" : activeTab}
+            {activeTab === "home"
+              ? "Overview"
+              : activeTab === "social"
+                ? "Social Feed"
+                : activeTab}
           </div>
 
           <div className="header-actions">
             {/* 👤 MY SOCIAL PROFILE ICON */}
             <button
               className="notif-btn"
-                         onClick={() => {
-              const myUserId = profile._id || profile.id;
-              if (profile.username) {
-                // Agar username hai, toh Social Feed wali profile kholo
-                setActiveTab("social");
-                setSelectedPublicUser({
-                  id: myUserId,
-                  firstName: profile.displayName,
-                  lastName: "",
-                  username: profile.username,
-                  profilePicture: profile.profilePicture,
-                  status: "SELF", // SELF likhne se khud ko 'Add Friend' bhejne ka button hide ho jayega!
-                });
-                fetchPublicUserPosts(myUserId); // 🟢 Apni posts fetch karein!
-              } else {
+              onClick={() => {
+                const myUserId = profile._id || profile.id;
+                if (profile.username) {
+                  // Agar username hai, toh Social Feed wali profile kholo
+                  setActiveTab("social");
+                  setSelectedPublicUser({
+                    id: myUserId,
+                    firstName: profile.displayName,
+                    lastName: "",
+                    username: profile.username,
+                    profilePicture: profile.profilePicture,
+                    status: "SELF", // SELF likhne se khud ko 'Add Friend' bhejne ka button hide ho jayega!
+                  });
+                  fetchPublicUserPosts(myUserId); // 🟢 Apni posts fetch karein!
+                } else {
                   // Agar username nahi banaya toh purani normal profile kholo
                   setActiveTab("profile");
                 }
@@ -5207,14 +6249,32 @@ export default function Dashboard({ userData, onLogout }) {
                 <button
                   className="notif-btn"
                   onClick={() => {
-                    setShowFriendsDropdown(!showFriendsDropdown);
+                    const nextVal = !showFriendsDropdown;
+                    setShowFriendsDropdown(nextVal);
                     setShowNotifDropdown(false);
+                    if (nextVal) {
+                      markAsRead("social");
+                    }
                   }}
                 >
-                  <Users size={24} />
-                  {friendRequests.length > 0 && (
+                  <Heart size={24} />{" "}
+                  {/* 🟢 Users icon ko Heart icon se replace kiya */}
+                  {friendRequests.length +
+                    notifications.filter(
+                      (n) =>
+                        (n.type === "SOCIAL_COMMENT" ||
+                          n.type === "SOCIAL_REACT") &&
+                        !n.isRead,
+                    ).length >
+                    0 && (
                     <span className="badge" style={{ background: "#ef4444" }}>
-                      {friendRequests.length}
+                      {friendRequests.length +
+                        notifications.filter(
+                          (n) =>
+                            (n.type === "SOCIAL_COMMENT" ||
+                              n.type === "SOCIAL_REACT") &&
+                            !n.isRead,
+                        ).length}
                     </span>
                   )}
                 </button>
@@ -5246,144 +6306,113 @@ export default function Dashboard({ userData, onLogout }) {
                           color: "#f8fafc",
                         }}
                       >
-                        Friend Requests
+                        Social Activity
                       </h3>
                     </div>
                     <div style={{ maxHeight: "350px", overflowY: "auto" }}>
-                      {friendRequests.length === 0 ? (
+                      {/* 👤 Friend Requests navigation bar */}
+                      {friendRequests.length > 0 && (
+                        <div
+                          onClick={() => {
+                            setShowRequestsModal(true);
+                            setShowFriendsDropdown(false);
+                          }}
+                          style={{
+                            padding: "12px 15px",
+                            background: "rgba(99, 102, 241, 0.15)",
+                            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                            color: "#a5b4fc",
+                            fontWeight: 600,
+                            fontSize: "0.85rem",
+                            cursor: "pointer",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span>Friend Requests ({friendRequests.length})</span>
+                          <span style={{ fontSize: "1rem" }}>&gt;</span>
+                        </div>
+                      )}
+
+                      {/* 💬 Social Notifications (Comments & Reactions) */}
+                      {notifications.filter(
+                        (n) =>
+                          n.type === "SOCIAL_COMMENT" ||
+                          n.type === "SOCIAL_REACT",
+                      ).length === 0 && friendRequests.length === 0 ? (
                         <p
                           style={{
                             padding: "25px",
                             textAlign: "center",
                             color: "#94a3b8",
                             fontSize: "0.9rem",
+                            margin: 0,
                           }}
                         >
-                          No pending requests
+                          No recent activity
                         </p>
                       ) : (
-                        friendRequests.map((req) => (
-                          <div
-                            key={req._id}
-                            style={{
-                              padding: "12px 15px",
-                              borderBottom: "1px solid rgba(255,255,255,0.05)",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "8px",
-                            }}
-                          >
+                        notifications
+                          .filter(
+                            (n) =>
+                              n.type === "SOCIAL_COMMENT" ||
+                              n.type === "SOCIAL_REACT",
+                          )
+                          .map((notif) => (
                             <div
+                              key={notif._id}
+                              onClick={() =>
+                                handleSocialNotificationClick(notif)
+                              }
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "10px",
+                                padding: "12px 15px",
+                                borderBottom:
+                                  "1px solid rgba(255,255,255,0.05)",
+                                background: notif.isRead
+                                  ? "transparent"
+                                  : "rgba(99, 102, 241, 0.08)",
                                 cursor: "pointer",
+                                transition: "background 0.2s",
                               }}
-                                                          onClick={() => {
-                              const senderId = req.sender._id || req.sender.id;
-                              setSelectedPublicUser({
-                                id: senderId,
-                                firstName: req.sender.firstName,
-                                lastName: req.sender.lastName,
-                                username: req.sender.username,
-                                profilePicture: req.sender.profilePicture,
-                                status: "RECEIVED",
-                                requestId: req._id,
-                              });
-                              fetchPublicUserPosts(senderId); // 🟢 Sender ki posts fetch karein!
-                              setShowFriendsDropdown(false);
-                            }}
                             >
                               <div
                                 style={{
-                                  width: "32px",
-                                  height: "32px",
-                                  borderRadius: "50%",
-                                  background:
-                                    "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
                                   fontWeight: 600,
-                                  color: "white",
+                                  color: "#f8fafc",
                                   fontSize: "0.85rem",
+                                  marginBottom: "2px",
                                 }}
                               >
-                                {req.sender.profilePicture ? (
-                                  <img
-                                    src={req.sender.profilePicture}
-                                    alt="Avatar"
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      borderRadius: "50%",
-                                      objectFit: "cover",
-                                    }}
-                                  />
-                                ) : (
-                                  req.sender.firstName.charAt(0).toUpperCase()
+                                {notif.title}
+                              </div>
+                              <div
+                                style={{
+                                  color: "#cbd5e1",
+                                  fontSize: "0.8rem",
+                                  lineHeight: "1.3",
+                                }}
+                              >
+                                {notif.message}
+                              </div>
+                              <div
+                                style={{
+                                  color: "#64748b",
+                                  fontSize: "0.75rem",
+                                  marginTop: "4px",
+                                }}
+                              >
+                                {new Date(notif.createdAt).toLocaleTimeString(
+                                  [],
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  },
                                 )}
                               </div>
-                              <div>
-                                <div
-                                  style={{
-                                    color: "#f8fafc",
-                                    fontWeight: 600,
-                                    fontSize: "0.85rem",
-                                  }}
-                                >
-                                  {req.sender.firstName} {req.sender.lastName}
-                                </div>
-                                <div
-                                  style={{
-                                    color: "#6366f1",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  @{req.sender.username}
-                                </div>
-                              </div>
                             </div>
-                           <div style={{ display: "flex", gap: "8px" }}>
-  <button
-    className="primary-button"
-    style={{
-      background: "#10b981",
-      flex: 1,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "5px",
-    }}
-    onClick={(e) => {
-      e.stopPropagation();
-      window.lastAcceptTime = Date.now();
-      handleAcceptFriendRequest(req._id, req.sender.firstName); //  Uses correct request ID and sender name
-    }}
-  >
-    <Check size={16} /> Accept
-  </button>
-
-  <button
-    className="primary-button"
-    style={{
-      background: "#ef4444",
-      color: "white",
-      flex: 1,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "5px",
-    }}
-    onClick={() => handleRejectFriendRequest(req._id)} //  Uses correct request ID
-  >
-    <X size={16} /> Reject
-  </button>
-</div>
-                          </div>
-                        ))
+                          ))
                       )}
                     </div>
                   </div>
@@ -5455,74 +6484,80 @@ export default function Dashboard({ userData, onLogout }) {
                           No notifications
                         </p>
                       ) : (
-                        notifications.map((notif) => (
-                          <div
-                            key={notif._id}
-                            onClick={() =>
-                              !notif.isRead && markAsRead(notif._id)
-                            }
-                            style={{
-                              padding: "15px",
-                              borderBottom: "1px solid #f1f5f9",
-                              background: notif.isRead ? "white" : "#f8fafc",
-                              cursor: notif.isRead ? "default" : "pointer",
-                              transition: "background 0.2s",
-                            }}
-                          >
+                        notifications
+                          .filter(
+                            (n) =>
+                              n.type !== "SOCIAL_COMMENT" &&
+                              n.type !== "SOCIAL_REACT",
+                          )
+                          .map((notif) => (
                             <div
+                              key={notif._id}
+                              onClick={() =>
+                                !notif.isRead && markAsRead(notif._id)
+                              }
                               style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "start",
+                                padding: "15px",
+                                borderBottom: "1px solid #f1f5f9",
+                                background: notif.isRead ? "white" : "#f8fafc",
+                                cursor: notif.isRead ? "default" : "pointer",
+                                transition: "background 0.2s",
                               }}
                             >
-                              <div style={{ flex: 1 }}>
-                                <div
-                                  style={{
-                                    fontWeight: 600,
-                                    color: "#1e293b",
-                                    fontSize: "0.9rem",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  {notif.title}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "start",
+                                }}
+                              >
+                                <div style={{ flex: 1 }}>
+                                  <div
+                                    style={{
+                                      fontWeight: 600,
+                                      color: "#1e293b",
+                                      fontSize: "0.9rem",
+                                      marginBottom: "4px",
+                                    }}
+                                  >
+                                    {notif.title}
+                                  </div>
+                                  <div
+                                    style={{
+                                      color: "#64748b",
+                                      fontSize: "0.85rem",
+                                      marginBottom: "6px",
+                                    }}
+                                  >
+                                    {notif.message}
+                                  </div>
+                                  <div
+                                    style={{
+                                      color: "#94a3b8",
+                                      fontSize: "0.75rem",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                  >
+                                    <Clock size={12} />{" "}
+                                    {formatTimeOnly(notif.createdAt)}
+                                  </div>
                                 </div>
-                                <div
-                                  style={{
-                                    color: "#64748b",
-                                    fontSize: "0.85rem",
-                                    marginBottom: "6px",
-                                  }}
-                                >
-                                  {notif.message}
-                                </div>
-                                <div
-                                  style={{
-                                    color: "#94a3b8",
-                                    fontSize: "0.75rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "4px",
-                                  }}
-                                >
-                                  <Clock size={12} />{" "}
-                                  {formatTimeOnly(notif.createdAt)}
-                                </div>
+                                {!notif.isRead && (
+                                  <div
+                                    style={{
+                                      width: "8px",
+                                      height: "8px",
+                                      borderRadius: "50%",
+                                      background: "#667eea",
+                                      marginTop: "6px",
+                                    }}
+                                  />
+                                )}
                               </div>
-                              {!notif.isRead && (
-                                <div
-                                  style={{
-                                    width: "8px",
-                                    height: "8px",
-                                    borderRadius: "50%",
-                                    background: "#667eea",
-                                    marginTop: "6px",
-                                  }}
-                                />
-                              )}
                             </div>
-                          </div>
-                        ))
+                          ))
                       )}
                     </div>
                   </div>
@@ -5628,10 +6663,7 @@ export default function Dashboard({ userData, onLogout }) {
                     label="Date & Time"
                     value={formatTime(selectedTx.createdAt)}
                   />
-                  <InfoRow
-                    label="Transaction ID"
-                    value={selectedTx._id.slice(-8).toUpperCase()}
-                  />
+                  <InfoRow label="Transaction ID" value={selectedTx._id} />
                 </div>
               </div>
             </div>
@@ -5727,7 +6759,7 @@ export default function Dashboard({ userData, onLogout }) {
               <button
                 className="primary-button"
                 style={{ marginTop: "20px" }}
-                onClick={confirmFreeze}
+                onClick={handleOtpSubmit}
               >
                 Verify & Confirm
               </button>
@@ -6064,6 +7096,916 @@ export default function Dashboard({ userData, onLogout }) {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 💬 COMMENTS SLIDING BOTTOM SHEET */}
+        {activeCommentPost && (
+          <div
+            className="modal-overlay"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0, 0, 0, 0.6)",
+              zIndex: 9999,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "flex-end",
+            }}
+            onClick={() => setActiveCommentPost(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: "600px",
+                background: "var(--bg-card)",
+                borderTopLeftRadius: "24px",
+                borderTopRightRadius: "24px",
+                border: "1px solid rgba(255, 255, 255, 0.05)",
+                borderBottom: "none",
+                padding: "24px",
+                maxHeight: "80vh",
+                display: "flex",
+                flexDirection: "column",
+                boxShadow: "0 -10px 40px rgba(0, 0, 0, 0.5)",
+              }}
+            >
+              {/* Modal Header */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "20px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  paddingBottom: "12px",
+                }}
+              >
+                <h3 style={{ color: "#f8fafc", fontSize: "1.2rem", margin: 0 }}>
+                  Comments (
+                  {activeCommentPost.comments
+                    ? activeCommentPost.comments.length
+                    : 0}
+                  )
+                </h3>
+                <button
+                  onClick={() => setActiveCommentPost(null)}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "none",
+                    color: "#94a3b8",
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "1.1rem",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Original Post Card */}
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.05)",
+                  borderRadius: "16px",
+                  padding: "15px",
+                  marginBottom: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                >
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      background:
+                        "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 600,
+                      color: "white",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    {activeCommentPost.author &&
+                    activeCommentPost.author.profilePicture ? (
+                      <img
+                        src={activeCommentPost.author.profilePicture}
+                        alt="Avatar"
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : activeCommentPost.author ? (
+                      activeCommentPost.author.firstName.charAt(0).toUpperCase()
+                    ) : (
+                      "?"
+                    )}
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        color: "#f8fafc",
+                        fontWeight: 600,
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      {activeCommentPost.author
+                        ? `${activeCommentPost.author.firstName} ${activeCommentPost.author.lastName || ""}`
+                        : "User"}
+                    </div>
+                    <div
+                      style={{
+                        color: "#6366f1",
+                        fontSize: "0.8rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      @
+                      {activeCommentPost.author
+                        ? activeCommentPost.author.username
+                        : "user"}
+                    </div>
+                  </div>
+                </div>
+                <p
+                  style={{
+                    color: "#e2e8f0",
+                    fontSize: "0.95rem",
+                    margin: 0,
+                    lineHeight: "1.4",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {activeCommentPost.content}
+                </p>
+              </div>
+
+              {/* Scrollable Comments Block */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  marginBottom: "20px",
+                  paddingRight: "5px",
+                  minHeight: "150px",
+                }}
+              >
+                {!activeCommentPost.comments ||
+                activeCommentPost.comments.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: "45px 20px",
+                      color: "#94a3b8",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "2.8rem",
+                        marginBottom: "15px",
+                        opacity: 0.3,
+                      }}
+                    >
+                      💬
+                    </div>
+                    <h4
+                      style={{
+                        color: "#cbd5e1",
+                        margin: "0 0 5px 0",
+                        fontSize: "1.05rem",
+                      }}
+                    >
+                      No comments yet
+                    </h4>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "0.85rem",
+                        color: "#64748b",
+                      }}
+                    >
+                      Be the first to comment on this status!
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "15px",
+                    }}
+                  >
+                    {activeCommentPost.comments.map((comment) => (
+                      <div
+                        key={comment._id}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "50%",
+                            background: "#6366f1",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 600,
+                            color: "white",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {comment.author.profilePicture ? (
+                            <img
+                              src={comment.author.profilePicture}
+                              alt="Avatar"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRadius: "50%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            comment.author.firstName.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div
+                            style={{
+                              background: "rgba(255, 255, 255, 0.03)",
+                              padding: "10px 14px",
+                              borderRadius: "16px",
+                              border: "1px solid rgba(255, 255, 255, 0.03)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  color: "#f8fafc",
+                                  fontWeight: 600,
+                                  fontSize: "0.9rem",
+                                }}
+                              >
+                                {comment.author.firstName}
+                              </span>
+                              <span
+                                style={{
+                                  color: "#64748b",
+                                  fontSize: "0.75rem",
+                                }}
+                              >
+                                @{comment.author.username}
+                              </span>
+                            </div>
+                            <p
+                              style={{
+                                color: "#cbd5e1",
+                                fontSize: "0.9rem",
+                                margin: 0,
+                                lineHeight: "1.4",
+                              }}
+                            >
+                              {comment.content}
+                            </p>
+                          </div>
+                          <div
+                            style={{
+                              color: "#64748b",
+                              fontSize: "0.75rem",
+                              marginTop: "4px",
+                              marginLeft: "12px",
+                            }}
+                          >
+                            {new Date(comment.createdAt).toLocaleDateString()}{" "}
+                            at{" "}
+                            {new Date(comment.createdAt).toLocaleTimeString(
+                              [],
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: true,
+                              },
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Input Submission Footer */}
+              {/* Input Submission Footer */}
+              <form
+                onSubmit={handleCommentSubmit}
+                style={{
+                  display: "flex",
+                  flexDirection: "column", // 🟢 Input aur counter ko vertical list me stack karein
+                  gap: "8px",
+                  borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                  paddingTop: "15px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    alignItems: "center",
+                    width: "100%",
+                  }}
+                >
+                  <input
+                    className="form-input"
+                    placeholder="Write a comment..."
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    maxLength={300} // 🟢 Frontend native limit: 300 characters se upar browser likhne hi nahi dega!
+                    style={{
+                      flex: 1,
+                      background: "rgba(0, 0, 0, 0.2)",
+                      border: "1px solid rgba(255, 255, 255, 0.05)",
+                      borderRadius: "12px",
+                      padding: "10px 15px",
+                      color: "#f8fafc",
+                    }}
+                  />
+                  <button
+                    className="primary-button"
+                    type="submit"
+                    disabled={!commentText.trim() || commentSubmitting}
+                    style={{
+                      width: "auto",
+                      padding: "10px 20px",
+                      borderRadius: "12px",
+                      background: "#6366f1",
+                    }}
+                  >
+                    {commentSubmitting ? "Sending..." : "Send"}
+                  </button>
+                </div>
+
+                {/* 🟢 Live Character Counter */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    fontSize: "0.8rem",
+                    color: commentText.length >= 300 ? "#ef4444" : "#64748b",
+                    transition: "color 0.2s",
+                  }}
+                >
+                  {commentText.length}/300 characters
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* 👤 FRIEND REQUESTS POPUP MODAL (Instagram Style Center Modal) */}
+        {showRequestsModal && (
+          <div
+            className="modal-overlay"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0, 0, 0, 0.6)",
+              zIndex: 9999,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+            onClick={() => setShowRequestsModal(false)}
+          >
+            <div
+              className="modal-card"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "90%",
+                maxWidth: "450px",
+                background: "#1e293b",
+                borderRadius: "20px",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                padding: "20px",
+                boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "15px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  paddingBottom: "10px",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "1.1rem", color: "#f8fafc" }}>
+                  Friend Requests ({friendRequests.length})
+                </h3>
+                <button
+                  onClick={() => setShowRequestsModal(false)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    fontSize: "1.2rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                style={{
+                  maxHeight: "300px",
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                {friendRequests.length === 0 ? (
+                  <p
+                    style={{
+                      padding: "20px",
+                      textAlign: "center",
+                      color: "#94a3b8",
+                      fontSize: "0.95rem",
+                      margin: 0,
+                    }}
+                  >
+                    No pending requests
+                  </p>
+                ) : (
+                  friendRequests.map((req) => (
+                    <div
+                      key={req._id}
+                      style={{
+                        padding: "12px",
+                        background: "rgba(255, 255, 255, 0.02)",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => {
+                          const senderId = req.sender._id || req.sender.id;
+                          setSelectedPublicUser({
+                            id: senderId,
+                            firstName: req.sender.firstName,
+                            lastName: req.sender.lastName,
+                            username: req.sender.username,
+                            profilePicture: req.sender.profilePicture,
+                            status: "RECEIVED",
+                            requestId: req._id,
+                          });
+                          fetchPublicUserPosts(senderId);
+                          setShowRequestsModal(false);
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "50%",
+                            background:
+                              "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 600,
+                            color: "white",
+                            fontSize: "0.9rem",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {req.sender.profilePicture ? (
+                            <img
+                              src={req.sender.profilePicture}
+                              alt="Avatar"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRadius: "50%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : (
+                            req.sender.firstName.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div>
+                          <div
+                            style={{
+                              color: "#f8fafc",
+                              fontWeight: 600,
+                              fontSize: "0.9rem",
+                            }}
+                          >
+                            {req.sender.firstName} {req.sender.lastName}
+                          </div>
+                          <div
+                            style={{
+                              color: "#6366f1",
+                              fontSize: "0.8rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            @{req.sender.username}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          className="primary-button"
+                          style={{
+                            background: "#10b981",
+                            flex: 1,
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            fontSize: "0.85rem",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "5px",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAcceptFriendRequest(
+                              req._id,
+                              req.sender.firstName,
+                            );
+                          }}
+                        >
+                          <Check size={14} /> Accept
+                        </button>
+                        <button
+                          className="primary-button"
+                          style={{
+                            background: "#ef4444",
+                            color: "white",
+                            flex: 1,
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            fontSize: "0.85rem",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "5px",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRejectFriendRequest(req._id);
+                          }}
+                        >
+                          <X size={14} /> Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 POST REACTIONS LIST POPUP MODAL (Facebook Style Tabbed Modal) */}
+        {activeReactionsPost && (
+          <div
+            className="modal-overlay"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0, 0, 0, 0.6)",
+              zIndex: 9999,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+            onClick={() => setActiveReactionsPost(null)}
+          >
+            <div
+              className="modal-card"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "90%",
+                maxWidth: "450px",
+                background: "#1e293b",
+                borderRadius: "20px",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                padding: "20px",
+                boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+                display: "flex",
+                flexDirection: "column",
+                maxHeight: "80vh",
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "15px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                  paddingBottom: "10px",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "1.1rem", color: "#f8fafc" }}>
+                  Post Reactions
+                </h3>
+                <button
+                  onClick={() => setActiveReactionsPost(null)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    fontSize: "1.2rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Dynamic Horizontal Tabs */}
+              {(() => {
+                const reactions = activeReactionsPost.reactions || [];
+                const uniqueTypes = Array.from(
+                  new Set(reactions.map((r) => r.type)),
+                );
+                const emojiMap = {
+                  like: "👍",
+                  love: "❤️",
+                  haha: "😆",
+                  sad: "😢",
+                  angry: "😡",
+                };
+
+                return (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        overflowX: "auto",
+                        paddingBottom: "10px",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                        marginBottom: "15px",
+                      }}
+                    >
+                      {/* 'All' Tab */}
+                      <button
+                        onClick={() => setReactionsFilterTab("all")}
+                        style={{
+                          background:
+                            reactionsFilterTab === "all"
+                              ? "rgba(99, 102, 241, 0.2)"
+                              : "rgba(255, 255, 255, 0.03)",
+                          border:
+                            reactionsFilterTab === "all"
+                              ? "1px solid #6366f1"
+                              : "1px solid rgba(255, 255, 255, 0.05)",
+                          color: "#f8fafc",
+                          padding: "6px 12px",
+                          borderRadius: "12px",
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        All ({reactions.length})
+                      </button>
+
+                      {/* Unique Emojis Tabs */}
+                      {uniqueTypes.map((type) => {
+                        const count = reactions.filter(
+                          (r) => r.type === type,
+                        ).length;
+                        return (
+                          <button
+                            key={type}
+                            onClick={() => setReactionsFilterTab(type)}
+                            style={{
+                              background:
+                                reactionsFilterTab === type
+                                  ? "rgba(99, 102, 241, 0.2)"
+                                  : "rgba(255, 255, 255, 0.03)",
+                              border:
+                                reactionsFilterTab === type
+                                  ? "1px solid #6366f1"
+                                  : "1px solid rgba(255, 255, 255, 0.05)",
+                              color: "#f8fafc",
+                              padding: "6px 12px",
+                              borderRadius: "12px",
+                              fontSize: "0.85rem",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {emojiMap[type]} {count}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Reactions User List */}
+                    <div
+                      style={{
+                        flex: 1,
+                        overflowY: "auto",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      {(() => {
+                        const filteredReactions =
+                          reactionsFilterTab === "all"
+                            ? reactions
+                            : reactions.filter(
+                                (r) => r.type === reactionsFilterTab,
+                              );
+
+                        if (filteredReactions.length === 0) {
+                          return (
+                            <p
+                              style={{
+                                textAlign: "center",
+                                color: "#94a3b8",
+                                fontSize: "0.9rem",
+                                margin: "20px 0",
+                              }}
+                            >
+                              No reactions on this tab.
+                            </p>
+                          );
+                        }
+
+                        return filteredReactions.map((r) => {
+                          const reactorId = r.user._id || r.user;
+                          const isMe = reactorId === userId;
+                          return (
+                            <div
+                              key={reactorId}
+                              onClick={() => {
+                                setSelectedPublicUser({
+                                  id: reactorId,
+                                  firstName: r.displayName,
+                                  lastName: "",
+                                  username: r.username,
+                                  profilePicture: r.profilePicture,
+                                  status: isMe
+                                    ? "SELF"
+                                    : friendsList.some(
+                                          (f) => f._id === reactorId,
+                                        )
+                                      ? "FRIENDS"
+                                      : "NONE",
+                                });
+                                fetchPublicUserPosts(reactorId);
+                                setActiveReactionsPost(null);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "10px",
+                                background: "rgba(255, 255, 255, 0.02)",
+                                borderRadius: "12px",
+                                border: "1px solid rgba(255, 255, 255, 0.04)",
+                                cursor: "pointer",
+                                transition: "background 0.2s",
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255, 255, 255, 0.05)")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255, 255, 255, 0.02)")
+                              }
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: "36px",
+                                    height: "36px",
+                                    borderRadius: "50%",
+                                    background:
+                                      "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: 600,
+                                    color: "white",
+                                    fontSize: "0.9rem",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {r.profilePicture ? (
+                                    <img
+                                      src={r.profilePicture}
+                                      alt="Avatar"
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        borderRadius: "50%",
+                                        objectFit: "cover",
+                                      }}
+                                    />
+                                  ) : (
+                                    r.displayName.charAt(0).toUpperCase()
+                                  )}
+                                </div>
+                                <div>
+                                  <div
+                                    style={{
+                                      color: "#f8fafc",
+                                      fontWeight: 600,
+                                      fontSize: "0.9rem",
+                                    }}
+                                  >
+                                    {r.displayName} {isMe ? "(You)" : ""}
+                                  </div>
+                                  <div
+                                    style={{
+                                      color: "#6366f1",
+                                      fontSize: "0.8rem",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    @{r.username}
+                                  </div>
+                                </div>
+                              </div>
+                              <span style={{ fontSize: "1.4rem" }}>
+                                {emojiMap[r.type]}
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

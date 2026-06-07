@@ -4,6 +4,9 @@ import User from "./models/User.js";
 import Wallet from "./models/Wallet.js";
 import Transaction from "./models/Transaction.js";
 import Notification from "./models/Notification.js";
+import FriendRequest from "./models/FriendRequest.js"; // 🟢 Added
+import Post from "./models/Post.js"; // 🟢 Added
+import SocialProfile from "./models/SocialProfile.js"; // 🟢 Added
 
 dotenv.config();
 
@@ -27,6 +30,18 @@ const resetDatabase = async () => {
         // Delete Notifications
         const notifs = await Notification.deleteMany({});
         console.log(`🗑️ Deleted ${notifs.deletedCount} Notifications.`);
+
+        // Delete Friend Requests 🟢 Added
+        const friendRequests = await FriendRequest.deleteMany({});
+        console.log(`🗑️ Deleted ${friendRequests.deletedCount} Friend Requests.`);
+
+        // Delete Posts 🟢 Added
+        const posts = await Post.deleteMany({});
+        console.log(`🗑️ Deleted ${posts.deletedCount} Posts.`);
+
+        // Delete Social Profiles 🟢 Added
+        const socialProfiles = await SocialProfile.deleteMany({});
+        console.log(`🗑️ Deleted ${socialProfiles.deletedCount} Social Profiles.`);
 
         console.log("✨ Database successfully cleared!");
         process.exit(0);

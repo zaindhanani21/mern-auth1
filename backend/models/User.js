@@ -48,7 +48,7 @@ const UserSchema = new mongoose.Schema(
       unique: true,
       trim: true
     },
-
+  
     // Security
     password: { type: String, required: true, select: false }, // Hashed
 
@@ -73,6 +73,7 @@ const UserSchema = new mongoose.Schema(
     // OTP System
     otp: { type: String, default: null },
     otpExpires: { type: Date, default: null },
+    otpAttempts: { type: Number, default: 0 },
 
     // Timestamp
     createdAt: { type: Date, default: Date.now }

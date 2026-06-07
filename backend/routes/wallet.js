@@ -8,7 +8,7 @@ import Transaction from "../models/Transaction.js";
 import Notification from "../models/Notification.js";
 import ExternalBank from "../models/ExternalBank.js";
 import SplitRequest from "../models/SplitRequest.js";
-import { sendMoneyReceivedEmail, sendMoneySentEmail, sendFundsAddedEmail } from "../mailHelper.js";
+import { sendMoneyReceivedEmail, sendMoneySentEmail, sendFundsAddedEmail, sendSecurityAlertEmail, sendSecurityOtpEmail } from "../mailHelper.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2023-10-16'
@@ -25,29 +25,161 @@ const notifyUser = async (userId, title, message, type, io) => {
     } catch (e) { console.error("Notification Error:", e); }
 };
 
+// 🟢 Helper to check Velocity Limit and Freeze Wallet if violated
+const checkVelocityLimit = async (userId, userEmail, wallet, io) => {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    
+    // Check all outgoing/funding transactions of this user in the last 2 minutes
+    const recentTxCount = await Transaction.countDocuments({
+        $or: [
+            { senderWallet: wallet._id },
+            { receiverWallet: wallet._id, type: 'ADD_MONEY' }
+        ],
+        createdAt: { $gte: twoMinutesAgo },
+        status: 'COMPLETED'
+    });
+
+        if (recentTxCount >= 3) {
+        // Freeze Wallet permanently (bypass session/rollback to persist lock)
+        await Wallet.updateOne({ _id: wallet._id }, { status: 'FROZEN' });
+        
+        // In-memory status update for current request
+        wallet.status = 'FROZEN';
+
+        // Create Security Notification
+        await Notification.create({
+            userId,
+            title: "🚨 Wallet Locked",
+            message: "Multiple transactions detected in a short time. Wallet locked for safety.",
+            type: "SECURITY"
+        });
+
+        if (io) {
+            io.to(userId.toString()).emit("notification", {
+                title: "🚨 Wallet Locked",
+                message: "Multiple transactions detected. Wallet locked for safety.",
+                type: "SECURITY"
+            });
+        }
+
+        // Send Email Alert
+        await sendSecurityAlertEmail(
+            userEmail,
+            "Too many transactions (Velocity Limit Exceeded: 3 or more transactions in 2 minutes)"
+        );
+
+        
+
+        throw new Error("Suspicious activity: Velocity limit exceeded. Your wallet has been frozen.");
+    }
+};
+
+// 🟢 Helper to verify OTP for Large Transactions (Returns true if success, false if blocked/needs OTP)
+const verifyLargeTransactionOtp = async (req, res, amount, otp, actionName) => {
+    if (Number(amount) >= 10000) {
+        if (!otp) {
+            // Generate OTP
+            const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+            req.user.otp = generatedOtp;
+            req.user.otpExpires = Date.now() + 5 * 60 * 1000; // 5 mins
+            req.user.otpAttempts = 0; // Reset attempts
+            await req.user.save();
+
+            // Send OTP Email
+            await sendSecurityOtpEmail(req.user.email, Number(amount), generatedOtp);
+
+            // Create security notification
+            await Notification.create({
+                userId: req.user._id,
+                title: "🔒 OTP Verification Required",
+                message: `A large transaction (${actionName}) of PKR ${amount} requires verification.`,
+                type: "SECURITY"
+            });
+
+            res.json({ requiresOtp: true, message: "Large transaction requires verification OTP." });
+            return false; // Stop API execution
+        } else {
+            // Verify OTP
+            if (req.user.otp !== otp || req.user.otpExpires < Date.now()) {
+                req.user.otpAttempts = (req.user.otpAttempts || 0) + 1;
+
+                if (req.user.otpAttempts >= 3) {
+                    // Freeze Wallet permanently (bypass session to persist lock on abort)
+                    await Wallet.updateOne({ userId: req.user._id }, { status: 'FROZEN' });
+
+                    req.user.otp = null;
+                    req.user.otpExpires = null;
+                    req.user.otpAttempts = 0;
+                    await req.user.save();
+
+                    // Send Alert Email
+                    await sendSecurityAlertEmail(req.user.email, `Too many failed OTP attempts during ${actionName} verification.`);
+
+                    res.status(400).json({ message: "Too many failed OTP attempts. Your wallet has been frozen." });
+                    return false; // Stop API execution
+                }
+
+                await req.user.save();
+                res.status(400).json({ message: `Invalid OTP. Attempts remaining: ${3 - req.user.otpAttempts}` });
+                return false; // Stop API execution
+            }
+
+            // Correct OTP -> Reset OTP details on User
+            req.user.otp = null;
+            req.user.otpExpires = null;
+            req.user.otpAttempts = 0;
+            await req.user.save();
+        }
+    }
+    return true; // Continue API execution
+};
+
 // 1. GET BALANCE & HISTORY
+// 1. GET BALANCE (Dashboard API - Super Fast!)
 router.get("/dashboard", protect, async (req, res) => {
     try {
         const wallet = await Wallet.findOne({ userId: req.user._id });
         if (!wallet) return res.status(404).json({ message: "Wallet not found" });
 
+        res.json({
+            balance: wallet.balance,
+            isFrozen: wallet.status === 'FROZEN'
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// 1b. GET TRANSACTION HISTORY (Lazy Loaded - Fetched on demand)
+router.get("/history", protect, async (req, res) => {
+    try {
+        const wallet = await Wallet.findOne({ userId: req.user._id });
+        if (!wallet) return res.status(404).json({ message: "Wallet not found" });
+
+        // 🟢 Deep Population: Is se batch query ke zarye instantly data load hota hai
         const history = await Transaction.find({
             $or: [{ senderWallet: wallet._id }, { receiverWallet: wallet._id }]
         })
             .sort({ createdAt: -1 })
-            .populate('senderWallet', 'walletId') // Only expose walletId if needed, or link to User details
-            .populate('receiverWallet', 'walletId');
+            .populate({
+                path: 'senderWallet',
+                select: 'walletId userId',
+                populate: { path: 'userId', select: 'firstName lastName mobileNumber' }
+            })
+            .populate({
+                path: 'receiverWallet',
+                select: 'walletId userId',
+                populate: { path: 'userId', select: 'firstName lastName mobileNumber' }
+            });
 
-        // For frontend display, we might want names instead of Wallet IDs.
-        // Complex populate to get user names:
-        const enrichedHistory = await Promise.all(history.map(async (tx) => {
+        // 🟢 In-Memory Loop: CPU memory mein microsecond mein response ready karta hai
+        const enrichedHistory = history.map((tx) => {
             const isSender = tx.senderWallet?._id.equals(wallet._id);
             let otherPartyName = "Bank/System";
             let otherPartyMobile = "";
 
             if (tx.type === 'SEND' || tx.type === 'RECEIVE') {
-                const otherWalletId = isSender ? tx.receiverWallet : tx.senderWallet;
-                const otherWallet = await Wallet.findById(otherWalletId).populate('userId', 'firstName lastName mobileNumber');
+                const otherWallet = isSender ? tx.receiverWallet : tx.senderWallet;
                 if (otherWallet && otherWallet.userId) {
                     otherPartyName = `${otherWallet.userId.firstName} ${otherWallet.userId.lastName}`;
                     otherPartyMobile = otherWallet.userId.mobileNumber;
@@ -66,11 +198,9 @@ router.get("/dashboard", protect, async (req, res) => {
                 otherPartyName,
                 otherPartyMobile
             };
-        }));
+        });
 
         res.json({
-            balance: wallet.balance,
-            isFrozen: wallet.status === 'FROZEN',
             history: enrichedHistory
         });
     } catch (error) {
@@ -96,6 +226,12 @@ router.post("/add-money", protect, async (req, res) => {
             session.endSession();
             return res.status(400).json({ message: "Card details are missing. Please try again." });
         }
+
+             // Check velocity limit before charging the card
+     const checkWallet = await Wallet.findOne({ userId: req.user._id });
+     if (!checkWallet) throw new Error("Wallet not found");
+     if (checkWallet.status === 'FROZEN') throw new Error("Wallet is Frozen");
+     await checkVelocityLimit(req.user._id, req.user.email, checkWallet, req.io);
 
         // --- STEP 2: Confirm the payment with Stripe ---
         // Stripe charges in smallest currency unit (cents/paisa), so multiply by 100
@@ -185,12 +321,24 @@ router.post("/send-money", protect, async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const { recipientMobile, amount } = req.body;
+        const { recipientMobile, amount, otp } = req.body;
         if (amount <= 0) throw new Error("Invalid amount");
 
         const senderWallet = await Wallet.findOne({ userId: req.user._id }).session(session);
         if (senderWallet.status === 'FROZEN') throw new Error("Your wallet is Frozen");
         if (senderWallet.balance < amount) throw new Error("Insufficient Balance");
+
+        // Check velocity limit before sending money
+        await checkVelocityLimit(req.user._id, req.user.email, senderWallet, req.io);
+
+        // Verify Large Transaction OTP
+        const isVerified = await verifyLargeTransactionOtp(req, res, amount, otp, "Transfer");
+        if (!isVerified) {
+            await session.abortTransaction();
+            session.endSession();
+            return;
+        }
+
 
         // Find Recipient User first
         const recipientUser = await User.findOne({ mobileNumber: recipientMobile });
@@ -296,6 +444,19 @@ router.post("/mark-notification-read", protect, async (req, res) => {
             return res.json({ message: "All notifications marked as read" });
         }
 
+        if (notificationId === 'social') {
+            // Mark all social comments & reactions notifications as read
+            await Notification.updateMany(
+                { 
+                    userId: req.user._id, 
+                    isRead: false,
+                    type: { $in: ['SOCIAL_COMMENT', 'SOCIAL_REACT'] }
+                },
+                { isRead: true }
+            );
+            return res.json({ message: "Social notifications marked as read" });
+        }
+
         // Mark single notification as read
         const notification = await Notification.findOneAndUpdate(
             { _id: notificationId, userId: req.user._id },
@@ -325,6 +486,8 @@ router.post("/pay-bill", protect, async (req, res) => {
         if (!wallet) throw new Error("Wallet not found");
         if (wallet.status === 'FROZEN') throw new Error("Your wallet is Frozen");
         if (wallet.balance < amount) throw new Error("Insufficient Balance");
+             // Check velocity limit before paying the bill
+     await checkVelocityLimit(req.user._id, req.user.email, wallet, req.io);
 
         // Deduct from wallet
         wallet.balance -= Number(amount);
@@ -361,11 +524,24 @@ router.post("/request-split", protect, async (req, res) => {
         if (!friends || friends.length === 0) throw new Error("No friends selected for splitting.");
 
         let participants = [];
+        let totalParticipantsAmount = 0; // 🛡️ Sum track karne ke liye
         for (let f of friends) {
             const user = await User.findOne({ mobileNumber: f.mobileNumber });
             if (!user) throw new Error(`User with mobile ${f.mobileNumber} not found.`);
             if (user._id.equals(req.user._id)) continue; // skip self
+            
+            // 🛡️ Check: Kisi bhi participant ki amount 0 ya negative nahi honi chahiye
+            if (!f.amount || Number(f.amount) <= 0) {
+                throw new Error(`Amount for ${user.firstName} must be greater than 0.`);
+            }
+            
+            totalParticipantsAmount += Number(f.amount);
             participants.push({ userId: user._id, amount: f.amount, status: 'PENDING' });
+        }
+
+        // 🛡️ Check: Sab participants ka sum total bill amount se zyada na ho
+        if (totalParticipantsAmount > totalAmount) {
+            throw new Error(`The total split amount for participants (PKR ${totalParticipantsAmount}) cannot exceed the total bill amount (PKR ${totalAmount}).`);
         }
 
         if (participants.length === 0) throw new Error("No valid friends added.");
@@ -413,7 +589,7 @@ router.post("/accept-split", protect, async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const { splitId } = req.body;
+        const { splitId, otp } = req.body;
 
         const split = await SplitRequest.findById(splitId).session(session);
         if (!split) throw new Error("Split request not found");
@@ -429,6 +605,17 @@ router.post("/accept-split", protect, async (req, res) => {
         const senderWallet = await Wallet.findOne({ userId: req.user._id }).session(session);
         if (senderWallet.status === 'FROZEN') throw new Error("Your wallet is Frozen");
         if (senderWallet.balance < amount) throw new Error("Insufficient Balance");
+
+        // Check velocity limit before accepting/paying split
+        await checkVelocityLimit(req.user._id, req.user.email, senderWallet, req.io);
+
+        // Verify Large Transaction OTP
+        const isVerified = await verifyLargeTransactionOtp(req, res, amount, otp, "Split Bill Payment");
+        if (!isVerified) {
+            await session.abortTransaction();
+            session.endSession();
+            return;
+        }
 
         const receiverWallet = await Wallet.findOne({ userId: split.initiator }).session(session);
 
@@ -464,10 +651,24 @@ router.post("/accept-split", protect, async (req, res) => {
         await session.commitTransaction();
 
         // Notify Initiator
+                // Notify Initiator
         notifyUser(split.initiator, "Split Paid", `${req.user.firstName} paid their share (PKR ${amount}) for ${split.description}`, "TRANSACTION", req.io);
         
         // Notify Acceptor (Self)
         notifyUser(req.user._id, "Split Approved", `You paid PKR ${amount} for ${split.description}`, "TRANSACTION", req.io);
+
+        // 🔄 Real-time sync for other participants
+        for (const p of split.participants) {
+            if (!p.userId.equals(req.user._id)) {
+                notifyUser(
+                    p.userId,
+                    "Split Updated",
+                    `${req.user.firstName} paid their share for ${split.description}`,
+                    "SPLIT_REQUEST",
+                    req.io
+                );
+            }
+        }
 
         res.json({ message: "Split Paid Successfully" });
     } catch (error) {
@@ -493,11 +694,24 @@ router.post("/reject-split", protect, async (req, res) => {
         split.participants[participantIndex].status = 'REJECTED';
         await split.save();
 
-        // Notify Initiator
+                // Notify Initiator
         notifyUser(split.initiator._id, "Split Rejected", `${req.user.firstName} rejected the split request for ${split.description}`, "SPLIT_REJECTED", req.io);
         
         // Notify Rejector (Self)
         notifyUser(req.user._id, "Split Rejected", `You rejected the split request from ${split.initiator.firstName}`, "SPLIT_REJECTED", req.io);
+
+        // 🔄 Real-time sync for other participants
+        for (const p of split.participants) {
+            if (!p.userId.equals(req.user._id)) {
+                notifyUser(
+                    p.userId,
+                    "Split Updated",
+                    `${req.user.firstName} rejected the split request for ${split.description}`,
+                    "SPLIT_REQUEST",
+                    req.io
+                );
+            }
+        }
 
         res.json({ message: "Split Rejected successfully" });
     } catch (error) {
@@ -509,7 +723,7 @@ router.post("/send-external-money", protect, async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const { bankName, accountNumber, amount } = req.body;
+        const { bankName, accountNumber, amount, otp } = req.body;
 
         // Validation
         if (!accountNumber || accountNumber.trim().length < 6) {
@@ -527,6 +741,17 @@ router.post("/send-external-money", protect, async (req, res) => {
         if (!senderWallet) throw new Error("Wallet not found");
         if (senderWallet.status === 'FROZEN') throw new Error("Your wallet is Frozen. Please unfreeze first.");
         if (senderWallet.balance < Number(amount)) throw new Error("Insufficient Wallet Balance");
+
+        // Check velocity limit before sending bank transfer
+        await checkVelocityLimit(req.user._id, req.user.email, senderWallet, req.io);
+
+        // Verify Large Transaction OTP
+        const isVerified = await verifyLargeTransactionOtp(req, res, amount, otp, "Bank Transfer");
+        if (!isVerified) {
+            await session.abortTransaction();
+            session.endSession();
+            return;
+        }
 
         // Real-time Stripe Bank Token API Call
         let token;
@@ -677,6 +902,13 @@ router.get('/fetch-bills', protect, async (req, res) => {
       return res.status(400).json({ message: 'Invalid consumer number. Please enter a valid 11-digit mobile number.' });
     }
 
+        // 🟢 NEW SECURITY CHECK: User sirf apna hi number fetch kar sake
+    if (consumerNumber !== req.user.mobileNumber) {
+      return res.status(400).json({ 
+        message: `Account Verification Failed: You can only fetch bills registered under your own mobile number (${req.user.mobileNumber}).` 
+      });
+    }
+
     if (!BILL_CONFIG[billType]) {
       return res.status(400).json({ message: 'Invalid bill type selected.' });
     }
@@ -689,16 +921,21 @@ router.get('/fetch-bills', protect, async (req, res) => {
 
     let customerId;
 
-    if (searchResult.data.length > 0) {
+        if (searchResult.data.length > 0) {
       // Customer already exists
       customerId = searchResult.data[0].id;
+      
+      // 🟢 Stripe ke server par purane name ("K-Electric...") ko automatically user ke real name se badal dena!
+      await stripe.customers.update(customerId, {
+        name: `${req.user.firstName} ${req.user.lastName}`
+      });
     } else {
       // Create new customer on Stripe
       const config = BILL_CONFIG[billType];
       const providerName = config.providers[0];
 
       const customer = await stripe.customers.create({
-        name: `${providerName} — Consumer ${consumerNumber}`,
+        name: `${req.user.firstName} ${req.user.lastName}`, // 🟢 Naye user ka Stripe profile direct real name se banega!
         email: req.user.email,
         metadata: {
           consumerNumber: consumerNumber,
@@ -709,7 +946,6 @@ router.get('/fetch-bills', protect, async (req, res) => {
       });
       customerId = customer.id;
     }
-
     // Fetch all invoices from Stripe for this customer
     let invoices = await stripe.invoices.list({
       customer: customerId,
@@ -766,10 +1002,15 @@ router.get('/fetch-bills', protect, async (req, res) => {
       }
     }
 
+    // Stripe se user ka real customer profile retrieve karna taake name fetch ho sake
+    const stripeCustomer = await stripe.customers.retrieve(customerId);
+    const ownerName = stripeCustomer.name || `${req.user.firstName} ${req.user.lastName}`;
+
     res.json({
       customerId,
       consumerNumber,
       billType,
+      ownerName: ownerName, // 🟢 Frontend ko user ka verified name send karna!
       invoices: formattedInvoices
     });
 
@@ -790,7 +1031,7 @@ router.post('/pay-selected-bills', protect, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const { invoiceIds } = req.body;
+    const { invoiceIds, otp } = req.body;
 
     if (!invoiceIds || invoiceIds.length === 0) {
       await session.abortTransaction();
@@ -823,6 +1064,17 @@ router.post('/pay-selected-bills', protect, async (req, res) => {
     if (wallet.status === 'FROZEN') throw new Error('Your wallet is Frozen.');
     if (wallet.balance < totalAmount) throw new Error(` Insufficient balance`);
 
+    // Check velocity limit before paying bills
+    await checkVelocityLimit(req.user._id, req.user.email, wallet, req.io);
+
+    // Verify Large Transaction OTP
+    const isVerified = await verifyLargeTransactionOtp(req, res, totalAmount, otp, "Bill Payment");
+    if (!isVerified) {
+        await session.abortTransaction();
+        session.endSession();
+        return;
+    }
+
     // Step 3: Wallet se paise kato
     wallet.balance -= totalAmount;
     await wallet.save({ session });
@@ -835,7 +1087,7 @@ router.post('/pay-selected-bills', protect, async (req, res) => {
       const tx = new Transaction({
         senderWallet: wallet._id,
         receiverWallet: wallet._id,
-        amount: invoice.amount_due / 100,
+        amount: invoice.total / 100,
         type: 'BILL_PAYMENT',
         description: `Paid ${invoice.metadata?.billType || 'Utility'} — ${invoice.metadata?.billMonth || ''}`
       });
