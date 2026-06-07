@@ -74,6 +74,7 @@ const UserSchema = new mongoose.Schema(
     otp: { type: String, default: null },
     otpExpires: { type: Date, default: null },
     otpAttempts: { type: Number, default: 0 },
+    splitBlockUntil: { type: Date, default: null },
 
     // Timestamp
     createdAt: { type: Date, default: Date.now }

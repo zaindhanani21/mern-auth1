@@ -3,6 +3,7 @@ import User from "./models/User.js";
 import Wallet from "./models/Wallet.js";
 import PendingUser from "./models/PendingUser.js"; // 🟢 NEW
 import mongoose from "mongoose";
+import { sendInactivityLogoutEmail } from "./mailHelper.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { v4 as uuidv4 } from "uuid";
@@ -328,6 +329,17 @@ router.post("/send-freeze-otp", protect, async (req, res) => {
     });
     res.json({ message: "OTP sent" });
   } catch (error) { res.status(500).json({ message: "Error sending OTP" }); }
+});
+
+// Inactivity Logout Email Endpoint
+router.post("/inactivity-logout", protect, async (req, res) => {
+  try {
+    const { firstName, lastName, email } = req.user;
+    await sendInactivityLogoutEmail(email, `${firstName} ${lastName}`);
+    res.json({ message: "Inactivity email sent successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 export default router;

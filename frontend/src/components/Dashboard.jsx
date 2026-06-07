@@ -5393,10 +5393,10 @@ const handlePostReact = async (postId, type) => {
                                   textAlign: "right",
                                   fontWeight: 700,
                                   color: "#6366f1",
-                                  background: (!friend.name || friend.name === "User not found" || friend.name === "Not found") ? "#e2e8f0" : "white",
-                                  cursor: (!friend.name || friend.name === "User not found" || friend.name === "Not found") ? "not-allowed" : "text"
+                                  background: (!friend.name || friend.name === "User not found" || friend.name === "Not found" || friend.name === "Already added" || friend.name === "You cannot add yourself") ? "#e2e8f0" : "white",
+                                  cursor: (!friend.name || friend.name === "User not found" || friend.name === "Not found" || friend.name === "Already added" || friend.name === "You cannot add yourself") ? "not-allowed" : "text"
                                 }}
-                                disabled={!friend.name || friend.name === "User not found" || friend.name === "Not found"}
+                                disabled={!friend.name || friend.name === "User not found" || friend.name === "Not found" || friend.name === "Already added" || friend.name === "You cannot add yourself"}
                                 value={friend.amount || ""}
                                 placeholder="0"
                                                                 onChange={(e) => {
@@ -5460,7 +5460,7 @@ const handlePostReact = async (postId, type) => {
             {splitForm.isCustom &&
               splitForm.totalAmount &&
               splitForm.friends.length > 0 &&
-              splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found") && (
+              splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found" && f.name !== "Already added" && f.name !== "You cannot add yourself") && (
                 <div
                   style={{
                     background: "#e0e7ff",
@@ -5510,7 +5510,7 @@ const handlePostReact = async (postId, type) => {
                             {/* 📊 Live Equal Split Breakdown */}
               {splitForm.totalAmount &&
                 splitForm.friends.length > 0 &&
-                splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found") &&
+                splitForm.friends.every((f) => f.name && f.name !== "User not found" && f.name !== "Not found" && f.name !== "Already added" && f.name !== "You cannot add yourself") &&
                 !splitForm.isCustom && (
                   <div
                     style={{
@@ -5559,7 +5559,25 @@ const handlePostReact = async (postId, type) => {
                 type="submit"
                 className="primary-button"
                 style={{ marginTop: "15px" }}
-                disabled={loading || isFrozen}
+                disabled={
+                  loading ||
+                  isFrozen ||
+                  !splitForm.description ||
+                  !splitForm.totalAmount ||
+                  Number(splitForm.totalAmount) <= 0 ||
+                  splitForm.friends.length === 0 ||
+                  splitForm.friends.some(f => 
+                    !f.name || 
+                    f.name === "User not found" || 
+                    f.name === "Not found" || 
+                    f.name === "Already added" || 
+                    f.name === "You cannot add yourself"
+                  ) ||
+                  (splitForm.isCustom && (
+                    splitForm.friends.some(f => Number(f.amount || 0) <= 0) ||
+                    splitForm.friends.reduce((sum, f) => sum + Number(f.amount || 0), 0) > Number(splitForm.totalAmount)
+                  ))
+                }
               >
                 {loading ? "Processing..." : "Send Request"}
               </button>
@@ -5735,19 +5753,19 @@ const handlePostReact = async (postId, type) => {
                             >
                               {loading ? "Processing..." : "Accept & Pay"}
                             </button>
-                            <button
-                              className="secondary-button"
-                              style={{
-                                flex: 1,
-                                padding: "10px",
-                                color: "#ef4444",
-                                borderColor: "#fca5a5",
-                              }}
-                              onClick={() => handleRejectSplit(split._id)}
-                              disabled={loading}
-                            >
-                              Reject
-                            </button>
+                                                      <button
+                            className="secondary-button"
+                            style={{
+                              flex: 1,
+                              padding: "10px",
+                              color: "#ef4444",
+                              borderColor: "#fca5a5",
+                            }}
+                            onClick={() => handleRejectSplit(split._id)}
+                            disabled={loading || isFrozen}
+                          >
+                            Reject
+                          </button>
                           </div>
                         </div>
                       )}

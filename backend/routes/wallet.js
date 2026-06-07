@@ -519,6 +519,36 @@ router.post("/pay-bill", protect, async (req, res) => {
 // 8. REQUEST BILL SPLIT
 router.post("/request-split", protect, async (req, res) => {
     try {
+                // 🔒 Check if user is currently blocked
+        if (req.user.splitBlockUntil && req.user.splitBlockUntil > Date.now()) {
+            const remainingMs = req.user.splitBlockUntil - Date.now();
+            const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+            const minutes = Math.ceil((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+            
+            let timeMessage = "";
+            if (hours > 0) {
+                timeMessage = `${hours} ${hours === 1 ? 'hour' : 'hours'} and ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+            } else {
+                timeMessage = `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+            }
+            
+            throw new Error(`Request timeout. Please try again after ${timeMessage}.`);
+        }
+
+        // 🔒 Spam Control: Count requests in the last 5 minutes
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const recentRequestCount = await SplitRequest.countDocuments({
+            initiator: req.user._id,
+            createdAt: { $gte: fiveMinutesAgo }
+        });
+
+        if (recentRequestCount >= 3) {
+            // Block user for 2 hours
+            req.user.splitBlockUntil = new Date(Date.now() + 2 * 60 * 60 * 1000);
+            await req.user.save();
+
+            throw new Error("Request timeout. Split request limit exceeded, blocked for 2 hours.");
+        }
         const { description, totalAmount, friends } = req.body;
         if (totalAmount <= 0) throw new Error("Invalid total amount");
         if (!friends || friends.length === 0) throw new Error("No friends selected for splitting.");

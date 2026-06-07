@@ -290,3 +290,53 @@ export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
     console.error('❌ Error sending transaction OTP email:', error);
   }
 };
+
+/**
+ * Send Inactivity Logout Email
+ */
+export const sendInactivityLogoutEmail = async (userEmail, userName) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject: '🔒 Security Alert: Session Expired - Wallexa',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Wallexa Security</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #1e293b; margin-top: 0;">Session Auto-Logout Alert</h2>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              Hello <strong>${userName}</strong>,
+            </p>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              For your account security, your Wallexa wallet session has been automatically logged out due to 5 minutes of inactivity.
+            </p>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              If you wish to access your wallet again, please log in from your browser.
+            </p>
+            
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="http://localhost:5173" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+                Log In Again
+              </a>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #94a3b8; font-size: 12px;">
+            <p>This is an automated security message from Wallexa. Please do not reply.</p>
+            <p>© 2026 Wallexa. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    });
+    console.log(`✅ Inactivity logout email sent to ${userEmail}`);
+  } catch (error) {
+    console.error('❌ Error sending inactivity logout email:', error);
+  }
+};
