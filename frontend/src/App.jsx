@@ -92,7 +92,7 @@ function App() {
         // Call backend to send inactivity logout email
         try {
             if (savedUser && savedUser.token) {
-                await fetch("http://localhost:5000/api/auth/inactivity-logout", {
+                 fetch("http://localhost:5000/api/auth/inactivity-logout", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -128,7 +128,7 @@ function App() {
         inactivityTimeoutRef.current = setTimeout(() => {
             setShowInactivityWarning(true);
             setWarningCountdown(60);
-        }, 4 * 60 * 1000); 
+        }, 1 * 60 * 1000); 
     };
 
     // 🔒 Click button to keep logged in

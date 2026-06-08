@@ -209,6 +209,21 @@ export default function Dashboard({ userData, onLogout }) {
     setShowFreezeConfirm(false);
   }, [activeTab]);
 
+    // 🔒 Cleanup camera stream on Dashboard component unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (window._html5QrCode) {
+          window._html5QrCode.stop().then(() => {
+            window._html5QrCode = null;
+          }).catch(() => {});
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    };
+  }, []);
+  
   // --- INITIALIZATION ---
   const getToken = () => userData?.token || localStorage.getItem("userToken");
 
