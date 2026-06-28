@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import "./Css/Wallexa.css";
 import "./Css/Verify.css";
 
@@ -41,7 +41,7 @@ export default function VerifyOtp({
     setMessage("");
     setIsLoading(true);
 
-    const base = "http://192.168.43.54:5000/api/auth";
+    const base = "http://localhost:5000/api/auth";
     const endpoint = isSignupFlow
       ? `${base}/verify-signup`
       : `${base}/verify-otp`;
@@ -59,11 +59,11 @@ export default function VerifyOtp({
       const data = await res.json();
 
       if (res.ok) {
-        // 🟢 Save token for BOTH signup and login flows
+        // ðŸŸ¢ Save token for BOTH signup and login flows
         if (data.token) {
           localStorage.setItem("userToken", data.token);
           localStorage.setItem("user", JSON.stringify(data.user));
-          console.log("Token Saved Successfully ✅");
+          console.log("Token Saved Successfully âœ…");
         }
 
         // Continue with success handler
@@ -136,7 +136,7 @@ export default function VerifyOtp({
             ENTER OTP CODE
           </label>
           <input
-            /* 🟢 Updated className to use normal otp-input style */
+            /* ðŸŸ¢ Updated className to use normal otp-input style */
             className={`input-field otp-single-input ${isRedirecting ? "disabled" : ""}`}
             style={{
               textAlign: "center",
@@ -145,7 +145,7 @@ export default function VerifyOtp({
               width: "100%",
             }}
             type="text"
-            placeholder="••••••"
+            placeholder="â€¢â€¢â€¢â€¢â€¢â€¢"
             value={otpCode}
             onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
             maxLength="6"
@@ -161,14 +161,14 @@ export default function VerifyOtp({
           </button>
 
           {message && (
-            /* 🟢 Status message styling matches your Global.css */
+            /* ðŸŸ¢ Status message styling matches your Global.css */
             <p className={`status-message ${message.toLowerCase().includes("success") ? "success" : "error"}`}>
               {message}
             </p>
           )}
         </form>
 
-        {/* 🟢 Updated from <p> to <button> to match Sign In "Sign Up" button style */}
+        {/* ðŸŸ¢ Updated from <p> to <button> to match Sign In "Sign Up" button style */}
         <button
           type="button"
           className={`secondary-button ${isRedirecting ? "disabled-link" : ""}`}

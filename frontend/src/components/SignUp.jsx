@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './Css/Signup.css';
 
-// 🟢 Multi-Step Signup Component
+// ðŸŸ¢ Multi-Step Signup Component
 export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -84,7 +84,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
     setLoading(true);
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/auth/signup", {
+      const res = await fetch("http://localhost:5000/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData)
@@ -135,7 +135,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
                 </div>
                 <input className="input-field" name="midName" placeholder="Middle Name (Optional)" value={formData.midName} onChange={updateField} />
 
-                <button type="button" className="primary-button" onClick={nextStep}>Next: Personal Details →</button>
+                <button type="button" className="primary-button" onClick={nextStep}>Next: Personal Details â†’</button>
               </motion.div>
             )}
 
@@ -160,7 +160,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
                 <div className="flex-row">
                   <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
-                  <button type="button" className="primary-button" onClick={nextStep}>Next: Contact →</button>
+                  <button type="button" className="primary-button" onClick={nextStep}>Next: Contact â†’</button>
                 </div>
               </motion.div>
             )}
@@ -175,7 +175,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
                 <div className="flex-row">
                   <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
-                  <button type="button" className="primary-button" onClick={nextStep}>Next: Security →</button>
+                  <button type="button" className="primary-button" onClick={nextStep}>Next: Security â†’</button>
                 </div>
               </motion.div>
             )}
@@ -213,3 +213,4 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
     </div>
   );
 }
+

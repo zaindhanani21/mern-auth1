@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import Stripe from "stripe";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
@@ -20,7 +20,7 @@ import {
   sendSecurityAlertEmail,
   sendSecurityOtpEmail,
   sendPinChangedEmail,
-  sendSplitRequestEmail, // ✅ NEW LINE
+  sendSplitRequestEmail, // âœ… NEW LINE
 } from "../mailHelper.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -109,7 +109,7 @@ const verifyTransactionPin = async (userId, pin) => {
   }
 };
 
-// 🟢 Helper to check Velocity Limit and Freeze Wallet if violated
+// ðŸŸ¢ Helper to check Velocity Limit and Freeze Wallet if violated
 const checkVelocityLimit = async (userId, userEmail, wallet, io) => {
   const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
 
@@ -133,7 +133,7 @@ const checkVelocityLimit = async (userId, userEmail, wallet, io) => {
     // Create Security Notification
     await Notification.create({
       userId,
-      title: "🚨 Wallet Locked",
+      title: "ðŸš¨ Wallet Locked",
       message:
         "Multiple transactions detected in a short time. Wallet locked for safety.",
       type: "SECURITY",
@@ -141,7 +141,7 @@ const checkVelocityLimit = async (userId, userEmail, wallet, io) => {
 
     if (io) {
       io.to(userId.toString()).emit("notification", {
-        title: "🚨 Wallet Locked",
+        title: "ðŸš¨ Wallet Locked",
         message: "Multiple transactions detected. Wallet locked for safety.",
         type: "SECURITY",
       });
@@ -159,7 +159,7 @@ const checkVelocityLimit = async (userId, userEmail, wallet, io) => {
   }
 };
 
-// 🟢 Helper to verify OTP for Large Transactions (Returns true if success, false if blocked/needs OTP)
+// ðŸŸ¢ Helper to verify OTP for Large Transactions (Returns true if success, false if blocked/needs OTP)
 const verifyLargeTransactionOtp = async (req, res, amount, otp, actionName) => {
   if (Number(amount) >= 10000) {
     if (!otp) {
@@ -168,7 +168,7 @@ const verifyLargeTransactionOtp = async (req, res, amount, otp, actionName) => {
         100000 + Math.random() * 900000,
       ).toString();
       req.user.otp = generatedOtp;
-      req.user.otpExpires = Date.now() + 10 * 60 * 1000; // 🟢 10 mins
+      req.user.otpExpires = Date.now() + 10 * 60 * 1000; // ðŸŸ¢ 10 mins
       req.user.otpAttempts = 0; // Reset attempts
       await req.user.save();
 
@@ -178,7 +178,7 @@ const verifyLargeTransactionOtp = async (req, res, amount, otp, actionName) => {
       // Create security notification
       await Notification.create({
         userId: req.user._id,
-        title: "🔒 OTP Verification Required",
+        title: "ðŸ”’ OTP Verification Required",
         message: `A large transaction (${actionName}) of PKR ${amount} requires verification.`,
         type: "SECURITY",
       });
@@ -251,7 +251,7 @@ router.get("/dashboard", protect, async (req, res) => {
       isFrozen: wallet.status === "FROZEN",
       isPinSet: wallet.isPinSet,
       mustResetPin: wallet.mustResetPin,
-      failedPinAttempts: wallet.failedPinAttempts, // 👈 failed attempts counter add kiya
+      failedPinAttempts: wallet.failedPinAttempts, // ðŸ‘ˆ failed attempts counter add kiya
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -264,7 +264,7 @@ router.get("/history", protect, async (req, res) => {
     const wallet = await Wallet.findOne({ userId: req.user._id });
     if (!wallet) return res.status(404).json({ message: "Wallet not found" });
 
-    // 🟢 Deep Population: Is se batch query ke zarye instantly data load hota hai
+    // ðŸŸ¢ Deep Population: Is se batch query ke zarye instantly data load hota hai
     const history = await Transaction.find({
       $or: [{ senderWallet: wallet._id }, { receiverWallet: wallet._id }],
     })
@@ -280,7 +280,7 @@ router.get("/history", protect, async (req, res) => {
         populate: { path: "userId", select: "firstName lastName mobileNumber" },
       });
 
-    // 🟢 In-Memory Loop: CPU memory mein microsecond mein response ready karta hai
+    // ðŸŸ¢ In-Memory Loop: CPU memory mein microsecond mein response ready karta hai
     const enrichedHistory = history.map((tx) => {
       const isSender = tx.senderWallet?._id.equals(wallet._id);
       let otherPartyName = "Bank/System";
@@ -303,8 +303,8 @@ router.get("/history", protect, async (req, res) => {
           let parsedAccount = "";
           let parsedHolder = "";
   
-          if (desc.includes(" — Holder: ")) {
-            const parts = desc.replace("Sent to ", "").split(" — ");
+          if (desc.includes(" â€” Holder: ")) {
+            const parts = desc.replace("Sent to ", "").split(" â€” ");
             parsedBank = parts[0] || "Bank Partner";
             parsedAccount = parts[1] ? parts[1].replace("A/C: ", "") : "";
             parsedHolder = parts[2] ? parts[2].replace("Holder: ", "") : "";
@@ -384,8 +384,8 @@ router.post("/stripe-initiate", protect, async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url: `http://192.168.43.54:5000/api/wallet/stripe-callback?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://192.168.43.54:5173/dashboard`,
+      success_url: `http://localhost:5000/api/wallet/stripe-callback?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `http://localhost:5173/dashboard`,
       metadata: {
         userId: req.user._id.toString(),
         amount: amount.toString(),
@@ -413,7 +413,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://192.168.43.54:5173/dashboard?status=failed&message=Missing+session+id",
+      "http://localhost:5173/dashboard?status=failed&message=Missing+session+id",
     );
     }
 
@@ -424,7 +424,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://192.168.43.54:5173/dashboard?status=failed&message=Payment+not+completed",
+      "http://localhost:5173/dashboard?status=failed&message=Payment+not+completed",
     );
     }
 
@@ -435,7 +435,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://192.168.43.54:5173/dashboard?status=failed&message=Invalid+payment+metadata",
+      "http://localhost:5173/dashboard?status=failed&message=Invalid+payment+metadata",
     );
     }
 
@@ -447,7 +447,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://192.168.43.54:5173/dashboard?status=success&message=Funds+already+credited",
+      "http://localhost:5173/dashboard?status=success&message=Funds+already+credited",
     );
     }
 
@@ -476,7 +476,7 @@ router.get("/stripe-callback", async (req, res) => {
     // Real-time notification
     notifyUser(
       userId,
-      "Funds Added ✅",
+      "Funds Added âœ…",
       `PKR ${amount} has been added to your Wallexa wallet successfully!`,
       "TRANSACTION",
       req.io,
@@ -490,13 +490,13 @@ router.get("/stripe-callback", async (req, res) => {
     // Redirect back to frontend
        // Line 463
        // Redirect back to frontend with details
-    return res.redirect(`http://192.168.43.54:5173/dashboard?status=success&amount=${amount}&txId=${tx._id}`);
+    return res.redirect(`http://localhost:5173/dashboard?status=success&amount=${amount}&txId=${tx._id}`);
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Stripe Verification Error:", error);
     return res.redirect(
-      `http://192.168.43.54:5173/dashboard?status=failed&message=${encodeURIComponent(error.message)}`,
+      `http://localhost:5173/dashboard?status=failed&message=${encodeURIComponent(error.message)}`,
     );
   }
 });
@@ -633,9 +633,9 @@ router.post("/verify-freeze-otp", protect, async (req, res) => {
     await wallet.save();
 
     const msg =
-      newStatus === "FROZEN" ? "Wallet Frozen ❄️" : "Wallet Unfrozen 🔥";
+      newStatus === "FROZEN" ? "Wallet Frozen â„ï¸" : "Wallet Unfrozen ðŸ”¥";
     notifyUser(req.user._id, "Security Alert", msg, "SECURITY", req.io);
-        // ✅ NEW CODE: Send Email on Freeze/Unfreeze
+        // âœ… NEW CODE: Send Email on Freeze/Unfreeze
     try {
       if (newStatus === "FROZEN") {
         sendSecurityAlertEmail(req.user.email, "Your wallet has been manually FROZEN. No transactions can be made until you unfreeze it.");
@@ -773,7 +773,7 @@ router.post("/pay-bill", protect, async (req, res) => {
 // 8. REQUEST BILL SPLIT
 router.post("/request-split", protect, async (req, res) => {
   try {
-    // 🔒 Check if user is currently blocked
+    // ðŸ”’ Check if user is currently blocked
     if (req.user.splitBlockUntil && req.user.splitBlockUntil > Date.now()) {
       const remainingMs = req.user.splitBlockUntil - Date.now();
       const hours = Math.floor(remainingMs / (1000 * 60 * 60));
@@ -791,7 +791,7 @@ router.post("/request-split", protect, async (req, res) => {
       );
     }
 
-    // 🔒 Spam Control: Count requests in the last 5 minutes
+    // ðŸ”’ Spam Control: Count requests in the last 5 minutes
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     const recentRequestCount = await SplitRequest.countDocuments({
       initiator: req.user._id,
@@ -813,14 +813,14 @@ router.post("/request-split", protect, async (req, res) => {
       throw new Error("No friends selected for splitting.");
 
     let participants = [];
-    let totalParticipantsAmount = 0; // 🛡️ Sum track karne ke liye
+    let totalParticipantsAmount = 0; // ðŸ›¡ï¸ Sum track karne ke liye
     for (let f of friends) {
       const user = await User.findOne({ mobileNumber: f.mobileNumber });
       if (!user)
         throw new Error(`User with mobile ${f.mobileNumber} not found.`);
       if (user._id.equals(req.user._id)) continue; // skip self
 
-      // 🛡️ Check: Kisi bhi participant ki amount 0 ya negative nahi honi chahiye
+      // ðŸ›¡ï¸ Check: Kisi bhi participant ki amount 0 ya negative nahi honi chahiye
       if (!f.amount || Number(f.amount) <= 0) {
         throw new Error(`Amount for ${user.firstName} must be greater than 0.`);
       }
@@ -833,7 +833,7 @@ router.post("/request-split", protect, async (req, res) => {
       });
     }
 
-    // 🛡️ Check: Sab participants ka sum total bill amount se zyada na ho
+    // ðŸ›¡ï¸ Check: Sab participants ka sum total bill amount se zyada na ho
     if (totalParticipantsAmount > totalAmount) {
       throw new Error(
         `The total split amount for participants (PKR ${totalParticipantsAmount}) cannot exceed the total bill amount (PKR ${totalAmount}).`,
@@ -861,7 +861,7 @@ router.post("/request-split", protect, async (req, res) => {
       );
     }
 
-        // ✅ NEW CODE: Send Emails to all participants
+        // âœ… NEW CODE: Send Emails to all participants
     try {
       for (const p of participants) {
         if (p.mobileNumber !== req.user.mobileNumber) {
@@ -1013,7 +1013,7 @@ router.post("/accept-split", protect, async (req, res) => {
       "TRANSACTION",
       req.io,
     );
-        // ✅ NEW CODE: Send Emails for Split Payment
+        // âœ… NEW CODE: Send Emails for Split Payment
     try {
       // 1. Jisne Pay kiya (Payer) usko email bhejo
       sendMoneySentEmail(
@@ -1032,7 +1032,7 @@ router.post("/accept-split", protect, async (req, res) => {
       console.error("Split Mail Error:", emailErr);
     }
 
-    // 🔄 Real-time sync for other participants
+    // ðŸ”„ Real-time sync for other participants
     for (const p of split.participants) {
       if (!p.userId.equals(req.user._id)) {
         notifyUser(
@@ -1094,7 +1094,7 @@ router.post("/reject-split", protect, async (req, res) => {
       req.io,
     );
 
-    // 🔄 Real-time sync for other participants
+    // ðŸ”„ Real-time sync for other participants
     for (const p of split.participants) {
       if (!p.userId.equals(req.user._id)) {
         notifyUser(
@@ -1290,7 +1290,7 @@ router.post("/send-external-money", protect, async (req, res) => {
       amount: Number(amount),
       type: "EXTERNAL_TRANSFER",
       status: "COMPLETED",
-      description: `Sent to ${bankName} — A/C: ••••${accountNumber.trim().slice(-4)} — Holder: ${recipientAccount ? recipientAccount.accountHolder : (token ? "Stripe Sandbox User" : "Bank Partner")}`,
+      description: `Sent to ${bankName} â€” A/C: â€¢â€¢â€¢â€¢${accountNumber.trim().slice(-4)} â€” Holder: ${recipientAccount ? recipientAccount.accountHolder : (token ? "Stripe Sandbox User" : "Bank Partner")}`,
     });
     await tx.save({ session });
 
@@ -1299,7 +1299,7 @@ router.post("/send-external-money", protect, async (req, res) => {
     // Real-time Socket Notification
     notifyUser(
       req.user._id,
-      "Transfer Successful 🏦",
+      "Transfer Successful ðŸ¦",
       `PKR ${amount} sent to ${bankName} account ending in ${accountNumber.trim().slice(-4)}`,
       "TRANSACTION",
       req.io,
@@ -1309,7 +1309,7 @@ router.post("/send-external-money", protect, async (req, res) => {
     try {
       sendMoneySentEmail(
         req.user.email,
-        `${bankName} (A/C: ••••${accountNumber.trim().slice(-4)})`,
+        `${bankName} (A/C: â€¢â€¢â€¢â€¢${accountNumber.trim().slice(-4)})`,
         Number(amount),
       );
     } catch (mailErr) {
@@ -1332,7 +1332,7 @@ router.post("/send-external-money", protect, async (req, res) => {
 });
 
 // ============================================================
-// UTILITY BILLING — 1LINK UBPS SIMULATED REGISTRY
+// UTILITY BILLING â€” 1LINK UBPS SIMULATED REGISTRY
 // ============================================================
 
 // 11. FETCH BILLS FROM DATABASE
@@ -1387,7 +1387,7 @@ router.get("/fetch-bills", protect, async (req, res) => {
                 year: "numeric",
               })
             : "N/A",
-          rawDueDate: bill.dueDate ? bill.dueDate.toISOString() : null, // 🟢 Raw ISO date added
+          rawDueDate: bill.dueDate ? bill.dueDate.toISOString() : null, // ðŸŸ¢ Raw ISO date added
           status: bill.status,
           billType: bill.billType,
           contractNumber: bill.contractNumber,
@@ -1438,7 +1438,7 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
         throw new Error(`Bill for ${bill.billMonth} is already paid.`);
       }
 
-      // 🟢 Check if bill is past due date dynamically
+      // ðŸŸ¢ Check if bill is past due date dynamically
       const isLate = bill.dueDate && new Date() > new Date(bill.dueDate);
       const payableAmount = isLate ? bill.amountAfterDueDate : bill.amountDue;
 
@@ -1489,7 +1489,7 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
         amount: payableAmount,
         type: "BILL_PAYMENT",
         status: "COMPLETED",
-        description: `Paid ${bill.provider} Bill — ${bill.billMonth}${isLate ? " (Late surcharge included)" : ""}|CN:${bill.consumerNumber}`,
+        description: `Paid ${bill.provider} Bill â€” ${bill.billMonth}${isLate ? " (Late surcharge included)" : ""}|CN:${bill.consumerNumber}`,
       });
       await tx.save({ session });
       lastTx = tx;
@@ -1501,7 +1501,7 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
     // Send real-time notification
     notifyUser(
       req.user._id,
-      "Bills Paid ✅",
+      "Bills Paid âœ…",
       `PKR ${totalAmount.toLocaleString()} deducted for ${invoiceIds.length} bill(s).`,
       "TRANSACTION",
       req.io,
@@ -1521,11 +1521,11 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ROUTE 2: Pay Selected Bills via Stripe
 // POST /api/wallet/pay-selected-bills
 // Body: { invoiceIds: ['in_xxx', 'in_yyy'] }
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post("/pay-selected-bills", protect, async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -1598,7 +1598,7 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
         receiverWallet: wallet._id,
         amount: invoice.total / 100,
         type: "BILL_PAYMENT",
-        description: `Paid ${invoice.metadata?.billType || "Utility"} — ${invoice.metadata?.billMonth || ""}`,
+        description: `Paid ${invoice.metadata?.billType || "Utility"} â€” ${invoice.metadata?.billMonth || ""}`,
       });
       await tx.save({ session });
     }
@@ -1610,7 +1610,7 @@ router.post("/pay-selected-bills", protect, async (req, res) => {
     // Step 6: Real-time notification bhejo
     notifyUser(
       req.user._id,
-      "Bills Paid ✅",
+      "Bills Paid âœ…",
       `PKR ${totalAmount.toLocaleString()} deducted for ${invoiceIds.length} bill(s).`,
       "TRANSACTION",
       req.io,
@@ -1702,7 +1702,7 @@ router.post("/extension-checkout", protect, async (req, res) => {
     // Real-time notification to merchant
     notifyUser(
       merchantUser._id,
-      "Payment Received 💰",
+      "Payment Received ðŸ’°",
       `Received PKR ${amount} from ${req.user.firstName} for ${description}`,
       "TRANSACTION",
       req.io,
@@ -1711,7 +1711,7 @@ router.post("/extension-checkout", protect, async (req, res) => {
     // Real-time notification to customer
     notifyUser(
       req.user._id,
-      "Checkout Payment Sent 📤",
+      "Checkout Payment Sent ðŸ“¤",
       `Paid PKR ${amount} to ${merchantUser.firstName} for ${description}`,
       "TRANSACTION",
       req.io,
@@ -1742,7 +1742,7 @@ router.post("/extension-checkout", protect, async (req, res) => {
 });
 
 // ==========================================
-// 🔐 TRANSACTION PIN SECURE API ROUTES
+// ðŸ” TRANSACTION PIN SECURE API ROUTES
 // ==========================================
 
 // A. SETUP TRANSACTION PIN
@@ -1849,7 +1849,7 @@ router.post("/change-pin/verify-current", protect, async (req, res) => {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: req.user.email,
-        subject: "🔒 Transaction PIN Change OTP - Wallexa",
+        subject: "ðŸ”’ Transaction PIN Change OTP - Wallexa",
         html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                         <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -1935,7 +1935,7 @@ router.post("/forgot-pin/verify-password", protect, async (req, res) => {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: user.email,
-        subject: "🔒 Transaction PIN Reset OTP - Wallexa",
+        subject: "ðŸ”’ Transaction PIN Reset OTP - Wallexa",
         html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                         <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -2045,3 +2045,4 @@ router.post("/forgot-pin/reset", protect, async (req, res) => {
   }
 });
 export default router;
+

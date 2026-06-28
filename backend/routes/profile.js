@@ -6,6 +6,7 @@ import crypto from "crypto";
 import Post from "../models/Post.js";
 import SocialProfile from "../models/SocialProfile.js";
 import Notification from "../models/Notification.js";
+import Message from "../models/Message.js";
 
 const router = express.Router();
 
@@ -1417,6 +1418,136 @@ router.post("/change-password", protect, async (req, res) => {
     }
 
     res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// ============================================================
+// CHAT ROUTES
+// ============================================================
+
+// GET /api/profile/chat/conversations — list of friends I've chatted with + last msg + unread count
+router.get("/chat/conversations", protect, async (req, res) => {
+  try {
+    const me = req.user._id;
+
+    // Get all messages involving me
+    const messages = await Message.find({
+      $or: [{ sender: me }, { receiver: me }],
+    })
+      .sort({ createdAt: -1 })
+      .populate("sender", "firstName lastName")
+      .populate("receiver", "firstName lastName");
+
+    // Build a map: friendId -> { lastMessage, unread }
+    const convMap = new Map();
+    for (const msg of messages) {
+      const friendId =
+        msg.sender._id.toString() === me.toString()
+          ? msg.receiver._id.toString()
+          : msg.sender._id.toString();
+
+      if (!convMap.has(friendId)) {
+        const unread = await Message.countDocuments({
+          sender: friendId,
+          receiver: me,
+          read: false,
+        });
+        // Fetch social profile for username/picture
+        const sp = await SocialProfile.findOne({ userId: friendId }).select(
+          "username profilePicture displayName"
+        );
+        const friendUser =
+          msg.sender._id.toString() === me.toString()
+            ? msg.receiver
+            : msg.sender;
+        convMap.set(friendId, {
+          friendId,
+          firstName: friendUser.firstName,
+          lastName: friendUser.lastName,
+          username: sp?.username || null,
+          profilePicture: sp?.profilePicture || null,
+          lastMessage: msg.content,
+          lastMessageAt: msg.createdAt,
+          unread,
+        });
+      }
+    }
+
+    res.json(Array.from(convMap.values()));
+  } catch (err) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// GET /api/profile/chat/:friendId — get last 60 messages with a friend
+router.get("/chat/:friendId", protect, async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { friendId } = req.params;
+
+    // Verify they are friends
+    const sp = await SocialProfile.findOne({ userId: me });
+    if (!sp || !sp.friends.map((f) => f.toString()).includes(friendId)) {
+      return res.status(403).json({ message: "Not friends" });
+    }
+
+    const messages = await Message.find({
+      $or: [
+        { sender: me, receiver: friendId },
+        { sender: friendId, receiver: me },
+      ],
+    })
+      .sort({ createdAt: 1 })
+      .limit(60);
+
+    // Mark incoming messages as read
+    await Message.updateMany(
+      { sender: friendId, receiver: me, read: false },
+      { read: true }
+    );
+
+    // Emit read receipt to sender
+    req.io.to(friendId).emit("messages_read", { by: me.toString() });
+
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ message: "Server Error" });
+  }
+});
+
+// POST /api/profile/chat/:friendId — send a message
+router.post("/chat/:friendId", protect, async (req, res) => {
+  try {
+    const me = req.user._id;
+    const { friendId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Message cannot be empty" });
+    }
+    if (content.trim().length > 1000) {
+      return res.status(400).json({ message: "Message too long" });
+    }
+
+    // Verify they are friends
+    const sp = await SocialProfile.findOne({ userId: me });
+    if (!sp || !sp.friends.map((f) => f.toString()).includes(friendId)) {
+      return res.status(403).json({ message: "Not friends" });
+    }
+
+    const msg = await Message.create({
+      sender: me,
+      receiver: friendId,
+      content: content.trim(),
+    });
+
+    // Emit to both sender and receiver rooms for real-time delivery
+    req.io.to(friendId).emit("new_message", msg);
+    req.io.to(me.toString()).emit("new_message", msg);
+
+    res.status(201).json(msg);
   } catch (err) {
     res.status(500).json({ message: "Server Error" });
   }

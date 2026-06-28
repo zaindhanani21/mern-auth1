@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import User from "./models/User.js";
 import UbpsBill from "./models/UbpsBill.js";
 import OneLinkBank from "./models/OneLinkBank.js";
+import SocialProfile from "./models/SocialProfile.js";
 
 import authRoutes from "./auth.js";
 import walletRoutes from "./routes/wallet.js"; // 🟢 New Wallet/Transaction Routes
@@ -20,7 +21,7 @@ const server = http.createServer(app); // 🟢 Wrap Express with HTTP Server
 // 🟢 Initialize Socket.IO
 const io = new Server(server, {
     cors: {
-        origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173"],
+        origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -30,7 +31,7 @@ const io = new Server(server, {
 app.use(express.json({ limit: '10mb' })); // Increased limit for base64 images
 app.use(express.urlencoded({ extended: true })); // 🟢 Safepay POST data parser
 app.use(cors({
-    origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173"],
+    origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173"],
     credentials: true,
 }));
 
@@ -312,19 +313,43 @@ app.use("/api/wallet", walletRoutes); // 🟢 Renamed from transactions
 app.use("/api/profile", profileRoutes); // 🟢 Profile Management
 
 // Socket.IO Events
+const socketUserMap = new Map(); // socketId -> userId
+
 io.on("connection", (socket) => {
     console.log(`🔌 Client Connected: ${socket.id}`);
 
-    // Join a private room based on User ID for secure personal notifications
-    socket.on("join_user_room", (userId) => {
+    socket.on("join_user_room", async (userId) => {
         if (userId) {
             socket.join(userId);
+            socketUserMap.set(socket.id, userId);
             console.log(`👤 User ${userId} joined their notification room.`);
+            // Notify friends this user is online
+            try {
+                const sp = await SocialProfile.findOne({ userId }).select("friends");
+                if (sp && sp.friends.length > 0) {
+                    sp.friends.forEach((friendId) => {
+                        io.to(friendId.toString()).emit("friend_online", { userId });
+                    });
+                }
+            } catch (e) { console.error("Online notify error:", e.message); }
         }
     });
 
-    socket.on("disconnect", () => {
-        console.log("🔌 Client Disconnected");
+    socket.on("disconnect", async () => {
+        const userId = socketUserMap.get(socket.id);
+        socketUserMap.delete(socket.id);
+        console.log(`🔌 Client Disconnected${userId ? ` (User: ${userId})` : ""}`);
+        if (userId) {
+            // Notify friends this user went offline
+            try {
+                const sp = await SocialProfile.findOne({ userId }).select("friends");
+                if (sp && sp.friends.length > 0) {
+                    sp.friends.forEach((friendId) => {
+                        io.to(friendId.toString()).emit("friend_offline", { userId });
+                    });
+                }
+            } catch (e) { console.error("Offline notify error:", e.message); }
+        }
     });
 });
 

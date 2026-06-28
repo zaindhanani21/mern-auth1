@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import "./Css/ModernDashboard.css";
 
-const SOCKET_URL = "http://192.168.43.54:5000";
+const SOCKET_URL = "http://localhost:5000";
 
 // Security Masking Helper for mobile/account numbers
 const maskInfo = (val) => {
@@ -508,6 +508,17 @@ export default function Dashboard({ userData, onLogout }) {
   const [homeFeedPosts, setHomeFeedPosts] = useState([]); // Main timeline feed posts
   const [postContent, setPostContent] = useState(""); // Status update box content
   const [feedLoading, setFeedLoading] = useState(true); // Feed load spinner control
+
+  // Chat States
+  const [chatView, setChatView] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [showConversations, setShowConversations] = useState(false);
+  const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+  const [onlineFriendIds, setOnlineFriendIds] = useState(new Set()); // Socket: online friends
+
   const [splitForm, setSplitForm] = useState({
     description: "",
     totalAmount: "",
@@ -687,7 +698,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/dashboard",
+        "http://localhost:5000/api/wallet/dashboard",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -708,7 +719,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/wallet/history", {
+      const res = await fetch("http://localhost:5000/api/wallet/history", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -737,7 +748,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/notifications",
+        "http://localhost:5000/api/wallet/notifications",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -754,7 +765,7 @@ export default function Dashboard({ userData, onLogout }) {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/profile", {
+      const res = await fetch("http://localhost:5000/api/profile", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -780,7 +791,7 @@ export default function Dashboard({ userData, onLogout }) {
     if (!getToken()) return;
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/get-splits",
+        "http://localhost:5000/api/wallet/get-splits",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -801,7 +812,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchFriends = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/profile/friends", {
+      const res = await fetch("http://localhost:5000/api/profile/friends", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -818,7 +829,7 @@ export default function Dashboard({ userData, onLogout }) {
     if (!getToken()) return;
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/friend-requests",
+        "http://localhost:5000/api/profile/friend-requests",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -839,7 +850,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/posts/feed",
+        "http://localhost:5000/api/profile/posts/feed",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -853,12 +864,63 @@ export default function Dashboard({ userData, onLogout }) {
     } finally {
       setFeedLoading(false);
     }
-  }, []); // Dependency wapas empty array ([]) ho gayi hai
+  }, []);
+
+  // Chat functions
+  const fetchConversations = useCallback(async () => {
+    const t = getToken();
+    if (!t) return;
+    try {
+      const res = await fetch("http://localhost:5000/api/profile/chat/conversations", {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data);
+        setTotalUnreadMessages(data.reduce((sum, c) => sum + c.unread, 0));
+      }
+    } catch (e) { console.error("Error fetching conversations", e); }
+  }, []);
+
+  const openChatWith = useCallback(async (friend) => {
+    const t = getToken();
+    if (!t) return;
+    setChatView(friend);
+    setShowConversations(false);
+    try {
+      const friendId = friend.id || friend._id || friend.friendId;
+      const res = await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setChatMessages(data);
+        fetchConversations();
+      }
+    } catch (e) { console.error("Error fetching chat messages", e); }
+  }, [fetchConversations]);
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !chatView || chatSending) return;
+    const t = getToken();
+    const friendId = chatView.id || chatView._id || chatView.friendId;
+    setChatSending(true);
+    try {
+      const res = await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        body: JSON.stringify({ content: chatInput.trim() }),
+      });
+      if (res.ok) setChatInput("");
+    } catch (e) { console.error("Error sending message", e); }
+    finally { setChatSending(false); }
+  };
+
   // 🟢 Kisi specific searched user ke posts fetch karna public profile display ke liye
   const fetchPublicUserPosts = async (userId) => {
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/posts/user/${userId}`,
+        `http://localhost:5000/api/profile/posts/user/${userId}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -881,7 +943,7 @@ export default function Dashboard({ userData, onLogout }) {
     setFriendSearchResult(null);
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/search?username=${encodeURIComponent(friendSearchQuery.trim())}`,
+        `http://localhost:5000/api/profile/search?username=${encodeURIComponent(friendSearchQuery.trim())}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -915,7 +977,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/friend-request/send",
+        "http://localhost:5000/api/profile/friend-request/send",
         {
           method: "POST",
           headers: {
@@ -996,7 +1058,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/friend-request/accept",
+        "http://localhost:5000/api/profile/friend-request/accept",
         {
           method: "POST",
           headers: {
@@ -1078,7 +1140,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/friend-request/reject",
+        "http://localhost:5000/api/profile/friend-request/reject",
         {
           method: "POST",
           headers: {
@@ -1119,7 +1181,7 @@ export default function Dashboard({ userData, onLogout }) {
   const handleRemoveFriend = async (friendId, friendName) => {
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/friend/remove",
+        "http://localhost:5000/api/profile/friend/remove",
         {
           method: "POST",
           headers: {
@@ -1162,7 +1224,7 @@ export default function Dashboard({ userData, onLogout }) {
     e.preventDefault();
     if (!postContent.trim()) return;
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/profile/posts", {
+      const res = await fetch("http://localhost:5000/api/profile/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1236,7 +1298,7 @@ export default function Dashboard({ userData, onLogout }) {
     setCommentSubmitting(true); // 🟢 Block further clicks immediately
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/posts/${activeCommentPost._id}/comment`,
+        `http://localhost:5000/api/profile/posts/${activeCommentPost._id}/comment`,
         {
           method: "POST",
           headers: {
@@ -1269,7 +1331,7 @@ export default function Dashboard({ userData, onLogout }) {
     setReactionSubmitting(true);
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/posts/${postId}/react`,
+        `http://localhost:5000/api/profile/posts/${postId}/react`,
         {
           method: "POST",
           headers: {
@@ -1307,7 +1369,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/posts/${notif.metadata.postId}`,
+        `http://localhost:5000/api/profile/posts/${notif.metadata.postId}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -1338,7 +1400,7 @@ export default function Dashboard({ userData, onLogout }) {
         date: receiptData.date,
       })}`;
 
-      const res = await fetch("http://192.168.43.54:5000/api/profile/posts", {
+      const res = await fetch("http://localhost:5000/api/profile/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1387,6 +1449,7 @@ export default function Dashboard({ userData, onLogout }) {
     fetchFriends(); // Friends list fetch karna on mount
     fetchFriendRequests(); // Friend requests list fetch karna on mount
     fetchHomeFeed(); // Home status posts feed fetch karna on mount
+    fetchConversations(); // Chat conversations
 
     const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
@@ -1594,6 +1657,30 @@ export default function Dashboard({ userData, onLogout }) {
         return prev;
       });
     });
+
+    // Real-time: New chat message
+    newSocket.on("new_message", (msg) => {
+      setChatView((prevChat) => {
+        if (prevChat) {
+          const fid = prevChat.id || prevChat._id || prevChat.friendId;
+          if (msg.sender === fid || msg.receiver === fid || msg.sender === userId || msg.receiver === userId) {
+            setChatMessages((prev) => prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]);
+          }
+        }
+        return prevChat;
+      });
+      fetchConversations();
+    });
+
+    newSocket.on("messages_read", () => fetchConversations());
+
+    // Online presence
+    newSocket.on("friend_online", ({ userId: fid }) => {
+      setOnlineFriendIds((prev) => new Set([...prev, fid]));
+    });
+    newSocket.on("friend_offline", ({ userId: fid }) => {
+      setOnlineFriendIds((prev) => { const next = new Set(prev); next.delete(fid); return next; });
+    });
   }, [
     userId,
     fetchData,
@@ -1604,6 +1691,7 @@ export default function Dashboard({ userData, onLogout }) {
     fetchFriends,
     fetchFriendRequests,
     fetchHomeFeed,
+    fetchConversations,
   ]);
 
   // 🟢 Safepay/Stripe Callback URL Parameters check (Wait until profile is loaded from backend)
@@ -1662,7 +1750,7 @@ export default function Dashboard({ userData, onLogout }) {
   const markAsRead = async (notificationId) => {
     try {
       await fetch(
-        "http://192.168.43.54:5000/api/wallet/mark-notification-read",
+        "http://localhost:5000/api/wallet/mark-notification-read",
         {
           method: "POST",
           headers: {
@@ -1719,7 +1807,7 @@ export default function Dashboard({ userData, onLogout }) {
     try {
       // 1. Account validation API ko hit karein holder name ke liye
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/validate-external-account",
+        "http://localhost:5000/api/wallet/validate-external-account",
         {
           method: "POST",
           headers: {
@@ -1780,7 +1868,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/mobile/${sendForm.recipient}`,
+        `http://localhost:5000/api/profile/mobile/${sendForm.recipient}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -1827,7 +1915,7 @@ export default function Dashboard({ userData, onLogout }) {
       }
       try {
         const res = await fetch(
-          `http://192.168.43.54:5000/api/profile/mobile/${sendForm.recipient}`,
+          `http://localhost:5000/api/profile/mobile/${sendForm.recipient}`,
           {
             headers: { Authorization: `Bearer ${getToken()}` },
           },
@@ -1924,7 +2012,7 @@ export default function Dashboard({ userData, onLogout }) {
   const requestFreeze = async () => {
     try {
       setOtpPurpose("freeze"); // 🟢 Purpose freeze set karein taake modal ko pata chale
-      await fetch("http://192.168.43.54:5000/api/auth/send-freeze-otp", {
+      await fetch("http://localhost:5000/api/auth/send-freeze-otp", {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken()}` },
       });
@@ -1937,7 +2025,7 @@ export default function Dashboard({ userData, onLogout }) {
   const confirmFreeze = async () => {
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/verify-freeze-otp",
+        "http://localhost:5000/api/wallet/verify-freeze-otp",
         {
           method: "POST",
           headers: {
@@ -1977,7 +2065,7 @@ export default function Dashboard({ userData, onLogout }) {
 
       // Set backend endpoint & payload parameters dynamically
       if (pendingTx.type === "send-money" || pendingTx.type === "qr-send") {
-        url = "http://192.168.43.54:5000/api/wallet/send-money";
+        url = "http://localhost:5000/api/wallet/send-money";
         bodyData = {
           recipientMobile: pendingTx.recipientMobile,
           amount: pendingTx.amount,
@@ -1985,19 +2073,19 @@ export default function Dashboard({ userData, onLogout }) {
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "pay-bill") {
-        url = "http://192.168.43.54:5000/api/wallet/pay-selected-bills";
+        url = "http://localhost:5000/api/wallet/pay-selected-bills";
         bodyData = {
           invoiceIds: pendingTx.invoiceIds,
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "accept-split") {
-        url = "http://192.168.43.54:5000/api/wallet/accept-split";
+        url = "http://localhost:5000/api/wallet/accept-split";
         bodyData = {
           splitId: pendingTx.splitId,
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "external-transfer") {
-        url = "http://192.168.43.54:5000/api/wallet/send-external-money";
+        url = "http://localhost:5000/api/wallet/send-external-money";
         bodyData = {
           bankName: pendingTx.bankName,
           accountNumber: pendingTx.accountNumber,
@@ -2200,7 +2288,7 @@ export default function Dashboard({ userData, onLogout }) {
 
       // Route parameters dynamically based on transaction type (including verified PIN)
       if (pendingTx.type === "send-money" || pendingTx.type === "qr-send") {
-        url = "http://192.168.43.54:5000/api/wallet/send-money";
+        url = "http://localhost:5000/api/wallet/send-money";
         bodyData = {
           recipientMobile: pendingTx.recipientMobile,
           amount: pendingTx.amount,
@@ -2209,21 +2297,21 @@ export default function Dashboard({ userData, onLogout }) {
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "pay-bill") {
-        url = "http://192.168.43.54:5000/api/wallet/pay-selected-bills";
+        url = "http://localhost:5000/api/wallet/pay-selected-bills";
         bodyData = {
           invoiceIds: pendingTx.invoiceIds,
           otp,
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "accept-split") {
-        url = "http://192.168.43.54:5000/api/wallet/accept-split";
+        url = "http://localhost:5000/api/wallet/accept-split";
         bodyData = {
           splitId: pendingTx.splitId,
           otp,
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "external-transfer") {
-        url = "http://192.168.43.54:5000/api/wallet/send-external-money";
+        url = "http://localhost:5000/api/wallet/send-external-money";
         bodyData = {
           bankName: pendingTx.bankName,
           accountNumber: pendingTx.accountNumber,
@@ -2411,7 +2499,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/change-pin/verify-current",
+        "http://localhost:5000/api/wallet/change-pin/verify-current",
         {
           method: "POST",
           headers: {
@@ -2453,7 +2541,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/forgot-pin/verify-password",
+        "http://localhost:5000/api/wallet/forgot-pin/verify-password",
         {
           method: "POST",
           headers: {
@@ -2516,7 +2604,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/forgot-pin/reset",
+        "http://localhost:5000/api/wallet/forgot-pin/reset",
         {
           method: "POST",
           headers: {
@@ -2576,7 +2664,7 @@ export default function Dashboard({ userData, onLogout }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/profile/update", {
+      const res = await fetch("http://localhost:5000/api/profile/update", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2620,7 +2708,7 @@ export default function Dashboard({ userData, onLogout }) {
       const base64 = reader.result;
       try {
         const res = await fetch(
-          "http://192.168.43.54:5000/api/profile/upload-picture",
+          "http://localhost:5000/api/profile/upload-picture",
           {
             method: "POST",
             headers: {
@@ -2698,7 +2786,7 @@ export default function Dashboard({ userData, onLogout }) {
     try {
       const res = await fetch(
         // 🌟 Niche 'XXXX' ki jagah apna IP (jaise localhost ya network IP) likhein
-        `http://192.168.43.54:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`, // Add your IP here
+        `http://localhost:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`, // Add your IP here
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
       const data = await res.json();
@@ -2746,7 +2834,7 @@ export default function Dashboard({ userData, onLogout }) {
     setUsernameChecking(true);
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/check-username/${cleanVal}`,
+        `http://localhost:5000/api/profile/check-username/${cleanVal}`,
         {
           // 🌟 Niche IP update rakhiyega
           headers: { Authorization: `Bearer ${getToken()}` },
@@ -2773,7 +2861,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/set-username",
+        "http://localhost:5000/api/profile/set-username",
         {
           // 🌟 Niche IP update rakhiyega
           method: "POST",
@@ -2811,7 +2899,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/profile/deactivate-social",
+        "http://localhost:5000/api/profile/deactivate-social",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${getToken()}` },
@@ -2879,7 +2967,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://192.168.43.54:5000/api/profile/mobile/${mobileNumber}`,
+        `http://localhost:5000/api/profile/mobile/${mobileNumber}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -2962,7 +3050,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/request-split",
+        "http://localhost:5000/api/wallet/request-split",
         {
           method: "POST",
           headers: {
@@ -3012,7 +3100,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/reject-split",
+        "http://localhost:5000/api/wallet/reject-split",
         {
           method: "POST",
           headers: {
@@ -3993,6 +4081,16 @@ export default function Dashboard({ userData, onLogout }) {
                     <UserCheck size={16} /> Friends
                   </button>
 
+                  {/* MESSAGE BUTTON */}
+                  <button
+                    key="message-friend-btn"
+                    className="primary-button"
+                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "5px", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}
+                    onClick={() => openChatWith({ id: selectedPublicUser.id, firstName: selectedPublicUser.firstName, lastName: selectedPublicUser.lastName, username: selectedPublicUser.username, profilePicture: selectedPublicUser.profilePicture })}
+                  >
+                    💬 Message
+                  </button>
+
                   {/* UNFRIEND BUTTON */}
                   <button
                     key="unfriend-action-btn"
@@ -4150,16 +4248,20 @@ export default function Dashboard({ userData, onLogout }) {
           {/* 👥 My Friends List Section (With Hide/Show & Modern UI) */}
           {selectedPublicUser.status === "SELF" && friendsList.length > 0 && (
             <div style={{ marginBottom: "25px" }}>
-              {/* 🔽 Toggle Button */}
+              {/* My Friends tab toggle */}
               <button
                 style={{
-                  background: "rgba(99, 102, 241, 0.1)",
-                  color: "#818cf8",
-                  border: "1px solid rgba(99, 102, 241, 0.2)",
-                  padding: "8px 16px",
+                  background: selectedPublicUser.showFriends
+                    ? "var(--primary-gradient)"
+                    : "#243447",
+                  color: selectedPublicUser.showFriends ? "white" : "#e2e8f0",
+                  border: selectedPublicUser.showFriends
+                    ? "none"
+                    : "1px solid #475569",
+                  padding: "8px 18px",
                   borderRadius: "10px",
                   cursor: "pointer",
-                  fontSize: "0.95rem",
+                  fontSize: "0.9rem",
                   fontWeight: 600,
                   marginBottom: "15px",
                   display: "flex",
@@ -4176,7 +4278,7 @@ export default function Dashboard({ userData, onLogout }) {
                 👥 My Friends ({friendsList.length})
               </button>
 
-              {/* 📋 List of Friends (Yeh sirf tab dikhegi jab showFriends true hoga) */}
+              {/* Friends list (shown when showFriends tab is active) */}
               {selectedPublicUser.showFriends && (
                 <div
                   style={{
@@ -4244,7 +4346,7 @@ export default function Dashboard({ userData, onLogout }) {
                       </div>
 
                       {/* Names (Right Side of DP) */}
-                      <div style={{ display: "flex", flexDirection: "column" }}>
+                      <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
                         <div
                           style={{
                             color: "#f8fafc",
@@ -4258,6 +4360,13 @@ export default function Dashboard({ userData, onLogout }) {
                           {friend.firstName}
                         </div>
                       </div>
+                      {/* Chat button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture }); }}
+                        style={{ background: "#6366f1", color: "#ffffff", border: "none", borderRadius: "8px", padding: "6px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 600, boxShadow: "0 2px 8px rgba(99,102,241,0.35)" }}
+                      >
+                        💬 Chat
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -4658,9 +4767,103 @@ export default function Dashboard({ userData, onLogout }) {
         </div>
       );
     }
+    // 4b. CHAT VIEW
+    if (chatView) {
+      const scrollRef = (el) => { if (el) el.scrollTop = el.scrollHeight; };
+      return (
+        <div className="view-container">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+            <button onClick={() => { setChatView(null); setChatMessages([]); }} style={{ background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0", padding: "8px 16px", borderRadius: "10px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>
+              &larr; Back
+            </button>
+            <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, overflow: "hidden" }}>
+              {chatView.profilePicture ? <img src={chatView.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : chatView.firstName?.[0]?.toUpperCase()}
+            </div>
+            <div>
+              <div style={{ color: "#f8fafc", fontWeight: 600 }}>{chatView.firstName} {chatView.lastName}</div>
+              {chatView.username && <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>@{chatView.username}</div>}
+            </div>
+          </div>
+          <div ref={scrollRef} style={{ background: "#0f172a", borderRadius: "16px", border: "1px solid #334155", padding: "16px", minHeight: "350px", maxHeight: "420px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {chatMessages.length === 0 ? (
+              <div style={{ color: "#94a3b8", textAlign: "center", margin: "auto", fontSize: "0.95rem" }}>No messages yet. Say hi! 👋</div>
+            ) : chatMessages.map((msg, i) => {
+              const isMe = msg.sender === userId || msg.sender?._id === userId;
+              return (
+                <div key={msg._id || i} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth: "72%", background: isMe ? "linear-gradient(135deg,#6366f1,#4f46e5)" : "#243447", color: "#f8fafc", padding: "10px 14px", borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px", fontSize: "0.9rem", lineHeight: "1.5", border: isMe ? "none" : "1px solid #334155" }}>
+                    <div>{msg.content}</div>
+                    <div style={{ fontSize: "0.72rem", color: isMe ? "rgba(255,255,255,0.65)" : "#64748b", marginTop: "5px", textAlign: isMe ? "right" : "left" }}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {isMe && <span style={{ marginLeft: "5px" }}>{msg.read ? "✓✓" : "✓"}</span>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
+            <input className="form-input" placeholder="Type a message..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} maxLength={1000} style={{ flex: 1, background: "#1e293b", color: "#f8fafc", border: "1px solid #334155" }} />
+            <button className="primary-button" style={{ width: "auto", padding: "0 24px", background: "#6366f1", color: "white", fontWeight: 600 }} onClick={handleSendMessage} disabled={chatSending || !chatInput.trim()}>Send</button>
+          </div>
+        </div>
+      );
+    }
+
     // 4. MAIN SOCIAL FEED: Default view containing Search, Post Box, Friends & Feed Timeline
     return (
       <div className="view-container">
+        {/* Online Friends Panel */}
+        {friendsList.filter((f) => onlineFriendIds.has(f._id)).length > 0 && (
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "16px", padding: "16px 18px", marginBottom: "18px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+              <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0, boxShadow: "0 0 8px #22c55e" }}></span>
+              <span style={{ color: "#f8fafc", fontWeight: 700, fontSize: "0.95rem" }}>Online Now</span>
+              <span style={{ background: "#22c55e22", color: "#22c55e", fontSize: "0.78rem", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", border: "1px solid #22c55e44" }}>{friendsList.filter((f) => onlineFriendIds.has(f._id)).length}</span>
+            </div>
+            <div style={{ display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "4px" }}>
+              {friendsList.filter((f) => onlineFriendIds.has(f._id)).map((friend) => (
+                <div key={friend._id} onClick={() => openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "7px", cursor: "pointer", minWidth: "60px" }}>
+                  <div style={{ position: "relative" }}>
+                    <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "1.1rem", overflow: "hidden", border: "2px solid #22c55e", boxShadow: "0 0 0 2px #0f172a" }}>
+                      {friend.profilePicture ? <img src={friend.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : friend.firstName?.[0]?.toUpperCase()}
+                    </div>
+                    <span style={{ position: "absolute", bottom: "0", right: "0", width: "12px", height: "12px", borderRadius: "50%", background: "#22c55e", border: "2px solid #1e293b" }}></span>
+                  </div>
+                  <span style={{ color: "#e2e8f0", fontSize: "0.75rem", fontWeight: 500, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60px" }}>{friend.firstName}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Messages Button */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "14px" }}>
+          <button onClick={() => { setShowConversations((p) => !p); fetchConversations(); }} style={{ position: "relative", background: showConversations ? "#4f46e5" : "#6366f1", color: "#ffffff", border: "none", borderRadius: "12px", padding: "9px 18px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 4px 12px rgba(99,102,241,0.35)" }}>
+            💬 Messages
+            {totalUnreadMessages > 0 && <span style={{ background: "#ef4444", color: "white", borderRadius: "50%", minWidth: "20px", height: "20px", fontSize: "0.72rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, padding: "0 4px" }}>{totalUnreadMessages}</span>}
+          </button>
+        </div>
+        {showConversations && (
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "16px", padding: "16px", marginBottom: "20px", boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
+            <h4 style={{ color: "#f8fafc", fontSize: "1rem", fontWeight: 700, marginBottom: "14px", borderBottom: "1px solid #334155", paddingBottom: "10px" }}>Recent Conversations</h4>
+            {conversations.length === 0 ? (
+              <p style={{ color: "#94a3b8", fontSize: "0.9rem", textAlign: "center", padding: "16px 0" }}>No conversations yet. Message a friend!</p>
+            ) : conversations.map((conv) => (
+              <div key={conv.friendId} onClick={() => openChatWith(conv)} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", cursor: "pointer", background: "#243447", marginBottom: "8px", border: "1px solid #334155", transition: "background 0.2s" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "1rem", overflow: "hidden", flexShrink: 0 }}>
+                  {conv.profilePicture ? <img src={conv.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : conv.firstName?.[0]?.toUpperCase()}
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <div style={{ color: "#f8fafc", fontWeight: 600, fontSize: "0.92rem" }}>{conv.firstName} {conv.lastName}</div>
+                  <div style={{ color: "#94a3b8", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>{conv.lastMessage}</div>
+                </div>
+                {conv.unread > 0 && <span style={{ background: "#6366f1", color: "white", borderRadius: "50%", minWidth: "22px", height: "22px", fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, padding: "0 4px" }}>{conv.unread}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* 🔍 Search Bar Section */}
         <div style={{ marginBottom: "20px" }}>
           <form
@@ -6070,7 +6273,7 @@ export default function Dashboard({ userData, onLogout }) {
               // Fetch recipient details
               try {
                 const res = await fetch(
-                  `http://192.168.43.54:5000/api/profile/mobile/${mobile}`,
+                  `http://localhost:5000/api/profile/mobile/${mobile}`,
                   {
                     headers: { Authorization: `Bearer ${getToken()}` },
                   },
@@ -7480,7 +7683,7 @@ export default function Dashboard({ userData, onLogout }) {
       setLoading(true);
       try {
         const res = await fetch(
-          "http://192.168.43.54:5000/api/profile/update",
+          "http://localhost:5000/api/profile/update",
           {
             method: "PUT",
             headers: {
@@ -7817,7 +8020,7 @@ export default function Dashboard({ userData, onLogout }) {
     setSetupLoading(true);
     try {
       const res = await fetch(
-        "http://192.168.43.54:5000/api/wallet/setup-pin",
+        "http://localhost:5000/api/wallet/setup-pin",
         {
           method: "POST",
           headers: {
@@ -8285,28 +8488,25 @@ export default function Dashboard({ userData, onLogout }) {
                       </h3>
                     </div>
                     <div style={{ maxHeight: "350px", overflowY: "auto" }}>
-                      {/* 👤 Friend Requests navigation bar */}
+                      {/* Friend Requests — inline accept/reject */}
                       {friendRequests.length > 0 && (
-                        <div
-                          onClick={() => {
-                            setShowRequestsModal(true);
-                            setShowFriendsDropdown(false);
-                          }}
-                          style={{
-                            padding: "12px 15px",
-                            background: "rgba(99, 102, 241, 0.15)",
-                            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                            color: "#a5b4fc",
-                            fontWeight: 600,
-                            fontSize: "0.85rem",
-                            cursor: "pointer",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span>Friend Requests ({friendRequests.length})</span>
-                          <span style={{ fontSize: "1rem" }}>&gt;</span>
+                        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px", marginBottom: "4px" }}>
+                          <div style={{ padding: "10px 15px 6px", color: "#818cf8", fontWeight: 700, fontSize: "0.82rem", letterSpacing: "0.06em", textTransform: "uppercase" }}>Friend Requests</div>
+                          {friendRequests.map((req) => (
+                            <div key={req._id} style={{ padding: "10px 15px", display: "flex", alignItems: "center", gap: "10px" }}>
+                              <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "0.9rem", flexShrink: 0 }}>
+                                {req.sender?.profilePicture ? <img src={req.sender.profilePicture} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (req.sender?.firstName?.[0] || "?").toUpperCase()}
+                              </div>
+                              <div style={{ flex: 1, overflow: "hidden" }}>
+                                <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.sender?.firstName} {req.sender?.lastName}</div>
+                                {req.sender?.username && <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>@{req.sender.username}</div>}
+                              </div>
+                              <div style={{ display: "flex", gap: "6px" }}>
+                                <button onClick={() => { handleAcceptFriendRequest(req._id, req.sender?.firstName); setShowFriendsDropdown(false); }} style={{ background: "#10b981", color: "white", border: "none", borderRadius: "8px", padding: "5px 10px", fontSize: "0.78rem", cursor: "pointer", fontWeight: 600 }}>Accept</button>
+                                <button onClick={() => { handleRejectFriendRequest(req._id); }} style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", padding: "5px 10px", fontSize: "0.78rem", cursor: "pointer", fontWeight: 600 }}>Reject</button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
 

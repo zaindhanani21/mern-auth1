@@ -175,14 +175,33 @@
 
 /* --- Features Grid --- */
 .features-container {
-    padding: 60px 40px;
+    padding: 60px 40px 80px;
     background: rgba(0, 0, 0, 0.2);
+}
+
+.features-heading {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.features-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    background: linear-gradient(to right, #fff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+}
+
+.features-subtitle {
+    color: var(--text-muted);
+    font-size: 1.05rem;
 }
 
 .features-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
     max-width: 1200px;
     margin: 0 auto;
 }
