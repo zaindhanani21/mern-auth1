@@ -122,13 +122,32 @@ export default function VerifyOtp({
         <p className="email-info">Code sent to: {pendingData.email}</p>
 
         <form onSubmit={handleSubmit}>
+          <label
+            style={{
+              display: "block",
+              color: "#a1a1aa",
+              fontSize: "12px",
+              marginBottom: "8px",
+              textAlign: "center",
+              textTransform: "uppercase",
+              letterSpacing: "1px",
+            }}
+          >
+            ENTER OTP CODE
+          </label>
           <input
             /* 🟢 Updated className to use normal otp-input style */
             className={`input-field otp-single-input ${isRedirecting ? "disabled" : ""}`}
+            style={{
+              textAlign: "center",
+              letterSpacing: "5px",
+              fontSize: "1.5rem",
+              width: "100%",
+            }}
             type="text"
-            placeholder="Enter OTP Code"
+            placeholder="••••••"
             value={otpCode}
-            onChange={(e) => setOtpCode(e.target.value)}
+            onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
             maxLength="6"
             required
             disabled={isLoading || isRedirecting}

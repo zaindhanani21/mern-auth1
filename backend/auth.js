@@ -16,9 +16,16 @@ const router = express.Router();
 // --- UTILS ---
 const generateNativeToken = (payload) => {
   const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret).update(`${header}.${encodedPayload}`).digest("base64url");
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
+    "base64url",
+  );
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${header}.${encodedPayload}`)
+    .digest("base64url");
   return `${header}.${encodedPayload}.${signature}`;
 };
 
@@ -27,18 +34,26 @@ const verifyNativeToken = (token) => {
   const secret = process.env.JWT_SECRET || "szabist_secret_key_2026";
   try {
     const [header, payload, signature] = token.split(".");
-    const validSignature = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
+    const validSignature = crypto
+      .createHmac("sha256", secret)
+      .update(`${header}.${payload}`)
+      .digest("base64url");
     if (signature === validSignature) {
       return JSON.parse(Buffer.from(payload, "base64url").toString());
     }
-  } catch { return null; }
+  } catch {
+    return null;
+  }
   return null;
 };
 
 // Middleware
 export const protect = async (req, res, next) => {
   let token;
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
     token = req.headers.authorization.split(" ")[1];
   }
   const decoded = verifyNativeToken(token);
@@ -62,14 +77,25 @@ const transporter = nodemailer.createTransport({
 // 1. SIGN UP (Phase 1: Save to PendingUser -> Send OTP)
 router.post("/signup", async (req, res) => {
   try {
-    const { firstName, lastName, email, mobileNumber, dateOfBirth, nationality, cnicNum, password } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      mobileNumber,
+      dateOfBirth,
+      nationality,
+      cnicNum,
+      password,
+    } = req.body;
 
     // check EXISTING USERS (Real)
     const existingUser = await User.findOne({
-      $or: [{ email }, { mobileNumber }]
+      $or: [{ email }, { mobileNumber }],
     });
     if (existingUser) {
-      return res.status(400).json({ message: "Email or Mobile already registered." });
+      return res
+        .status(400)
+        .json({ message: "Email or Mobile already registered." });
     }
 
     // Clean up any old pending requests for this email to avoid duplicates
@@ -81,7 +107,7 @@ router.post("/signup", async (req, res) => {
     // Save to Pending Collection
     const pendingUser = new PendingUser({
       ...req.body,
-      otp
+      otp,
     });
     await pendingUser.save();
 
@@ -91,7 +117,7 @@ router.post("/signup", async (req, res) => {
         from: process.env.EMAIL_USER,
         to: email,
         subject: "Wallexa Verification Code",
-        text: `Your verification code is ${otp}. It expires in 10 minutes.`
+        text: `Your verification code is ${otp}. It expires in 10 minutes.`,
       });
     } catch (e) {
       console.error("Mail Error:", e);
@@ -102,9 +128,8 @@ router.post("/signup", async (req, res) => {
       message: "OTP sent to email.",
       userId: pendingUser._id, // This is the PENDING ID
       signupVerificationRequired: true,
-      email
+      email,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Signup failed." });
@@ -123,18 +148,24 @@ router.post("/verify-signup", async (req, res) => {
     if (!pending) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ message: "Invalid verification request. Please sign up again." });
+      return res
+        .status(400)
+        .json({
+          message: "Invalid verification request. Please sign up again.",
+        });
     }
 
     if (pending.otp !== otpCode) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ message: "Invalid OTP code. Please try again." });
+      return res
+        .status(400)
+        .json({ message: "Invalid OTP code. Please try again." });
     }
 
     // Double check conflict before commit (WITHOUT session to avoid locks)
     const conflict = await User.findOne({
-      $or: [{ email: pending.email }, { mobileNumber: pending.mobileNumber }]
+      $or: [{ email: pending.email }, { mobileNumber: pending.mobileNumber }],
     });
 
     if (conflict) {
@@ -142,7 +173,11 @@ router.post("/verify-signup", async (req, res) => {
       session.endSession();
       // Clean up the pending user since they already exist
       await PendingUser.findByIdAndDelete(userId);
-      return res.status(400).json({ message: "User already verified/exists. Please login instead." });
+      return res
+        .status(400)
+        .json({
+          message: "User already verified/exists. Please login instead.",
+        });
     }
 
     // Create REAL User (password is plain text from PendingUser, pre-save hook will hash it)
@@ -157,7 +192,7 @@ router.post("/verify-signup", async (req, res) => {
       password: pending.password, // Pre-save hook will hash this!
       cnicEncrypted: User.encryptCNIC(pending.cnicNum),
       cnicHash: User.hashCNIC(pending.cnicNum),
-      isEmailVerified: true
+      isEmailVerified: true,
     });
     await newUser.save({ session });
 
@@ -165,8 +200,8 @@ router.post("/verify-signup", async (req, res) => {
     const newWallet = new Wallet({
       userId: newUser._id,
       walletId: uuidv4(),
-      currency: 'PKR',
-      status: 'ACTIVE'
+      currency: "PKR",
+      status: "ACTIVE",
     });
     await newWallet.save({ session });
 
@@ -186,10 +221,9 @@ router.post("/verify-signup", async (req, res) => {
         id: newUser._id,
         firstName: newUser.firstName,
         email: newUser.email,
-        mobileNumber: newUser.mobileNumber
-      }
+        mobileNumber: newUser.mobileNumber,
+      },
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
@@ -200,7 +234,7 @@ router.post("/verify-signup", async (req, res) => {
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0];
       return res.status(400).json({
-        message: `This ${field} is already registered. Please login instead.`
+        message: `This ${field} is already registered. Please login instead.`,
       });
     }
 
@@ -213,7 +247,7 @@ router.post("/signin", async (req, res) => {
   const { identifier, password } = req.body;
   try {
     const user = await User.findOne({
-      $or: [{ email: identifier }, { mobileNumber: identifier }]
+      $or: [{ email: identifier }, { mobileNumber: identifier }],
     }).select("+password");
 
     if (!user || !(await user.matchPassword(password))) {
@@ -222,7 +256,7 @@ router.post("/signin", async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;
-    user.otpExpires = Date.now() + 5 * 60 * 1000;
+    user.otpExpires = Date.now() + 10 * 60 * 1000; // 🟢 Validity extended to 10 minutes
     await user.save();
 
     try {
@@ -230,17 +264,21 @@ router.post("/signin", async (req, res) => {
         from: process.env.EMAIL_USER,
         to: user.email,
         subject: "Login OTP",
-        text: `Your Login OTP is ${otp}`
+        text: `Your Login OTP is ${otp}. It expires in 10 minutes.`,
       });
-    } catch (e) { console.error("Login Mail Error", e); }
+    } catch (e) {
+      console.error("Login Mail Error", e);
+    }
 
     res.json({
       message: "OTP sent",
       requiresOTP: true,
       userId: user._id, // Real User ID
-      email: user.email
+      email: user.email,
     });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 // 4. VERIFY LOGIN OTP
@@ -264,20 +302,31 @@ router.post("/verify-otp", async (req, res) => {
       user: {
         id: user._id,
         firstName: user.firstName,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
-// 5. FORGOT PASSWORD (Initiate)
+// 5. FORGOT PASSWORD (Initiate) - with CNIC verification
 router.post("/forgot-password", async (req, res) => {
-  const { identifier } = req.body;
+  const { identifier, cnic } = req.body;
   try {
     const user = await User.findOne({
-      $or: [{ email: identifier }, { mobileNumber: identifier }]
+      $or: [{ email: identifier }, { mobileNumber: identifier }],
     });
-    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid credentials. Please try again.", resetInitiated: false });
+    }
+
+    // CNIC verify karo
+    const cnicHash = User.hashCNIC(cnic);
+    if (user.cnicHash !== cnicHash) {
+      return res.status(400).json({ message: "Invalid credentials. Please try again.", resetInitiated: false });
+    }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;
@@ -288,20 +337,33 @@ router.post("/forgot-password", async (req, res) => {
       from: process.env.EMAIL_USER,
       to: user.email,
       subject: "Password Reset - Wallexa",
-      text: `Your reset OTP is ${otp}`
+      text: `Your reset OTP is ${otp}`,
     });
 
-    res.json({ message: "OTP sent", userId: user._id, resetInitiated: true });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+    res.json({ message: "OTP sent to your email.", userId: user._id, resetInitiated: true });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 // 6. RESET PASSWORD (Finalize)
 router.post("/reset-password", async (req, res) => {
   const { userId, otpCode, newPassword } = req.body;
   try {
-    const user = await User.findById(userId);
+    // ".select('+password')" isliye lagaya hai kyunki database password ko normal fetch mein hide rakhta hai
+    const user = await User.findById(userId).select("+password");
     if (!user || user.otp !== otpCode || user.otpExpires < Date.now()) {
       return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Check karein ke naya password kahin purane password ke barabar toh nahi
+    const isSamePassword = await user.matchPassword(newPassword);
+    if (isSamePassword) {
+      return res
+        .status(400)
+        .json({
+          message: "New password cannot be the same as your old password.",
+        });
     }
 
     user.password = newPassword;
@@ -309,8 +371,17 @@ router.post("/reset-password", async (req, res) => {
     user.otpExpires = null;
     await user.save();
 
+    transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: user.email,
+      subject: "Password Reset Successful - Wallexa",
+      text: `Hi ${user.firstName},\n\nYour Wallexa account password has been successfully reset.\n\nIf you did not make this change, please contact support immediately.\n\nWallexa Security Team`,
+    });
+
     res.json({ message: "Password updated successfully" });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 // Freeze/Unfreeze OTP Request
@@ -318,17 +389,19 @@ router.post("/send-freeze-otp", protect, async (req, res) => {
   try {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     req.user.otp = otp;
-    req.user.otpExpires = Date.now() + 5 * 60 * 1000;
+    req.user.otpExpires = Date.now() + 10 * 60 * 1000; // 🟢 Validity extended to 10 minutes
     await req.user.save();
 
     transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: req.user.email,
       subject: "Security Alert: Wallet Status Change",
-      text: `OTP to freeze/unfreeze wallet: ${otp}`
+      text: `OTP to freeze/unfreeze wallet: ${otp}. It expires in 10 minutes.`,
     });
     res.json({ message: "OTP sent" });
-  } catch (error) { res.status(500).json({ message: "Error sending OTP" }); }
+  } catch (error) {
+    res.status(500).json({ message: "Error sending OTP" });
+  }
 });
 
 // Inactivity Logout Email Endpoint

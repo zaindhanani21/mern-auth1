@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      width: 320px;
+      margin: 0;
+      padding: 20px;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .header {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      width: 100%;
+      padding: 15px 0;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
+    }
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 15px;
+      width: 90%;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .label {
+      font-size: 0.72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .amount {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #6366f1;
+    }
+    .btn {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      box-shadow: 0 4px 6px rgba(79, 70, 229, 0.15);
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+    .btn:disabled {
+      background: #cbd5e1;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .btn-secondary {
+      background: none;
+      border: 1px solid #cbd5e1;
+      color: #475569;
+      margin-top: 8px;
+    }
+    .btn-danger {
+      background: none;
+      border: 1px solid #fca5a5;
+      color: #ef4444;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .btn-danger:hover {
+      background: #fef2f2;
+    }
+    .error {
+      color: #ef4444;
+      font-size: 0.85rem;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+    .success {
+      color: #10b981;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-top: 15px;
+    }
+    .otp-input {
+      width: 90%;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 4px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">Wallexa Checkout</div>
+    
+    <div id="auth-state" class="card">
+      <div class="label">Connected Account</div>
+      <div id="user-email" class="value">Loading session...</div>
+    </div>
+
+    <div id="checkout-card" class="card" style="display: none;">
+      <!-- Store Brand & Owner Split -->
+      <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px;">
+        <div style="text-align: left;">
+          <div class="label">Store</div>
+          <div id="merchant-brand" class="value" style="font-size: 0.95rem; color: #4f46e5; font-weight: 700;">Wallexa Premium Store</div>
+        </div>
+        <div style="text-align: right;">
+          <div class="label">Merchant</div>
+          <div id="merchant-owner-name" class="value" style="font-size: 0.95rem;">Loading...</div>
+        </div>
+      </div>
+
+      <div class="label">Payment Description</div>
+      <div id="merchant-desc" class="value" style="margin-bottom: 12px; font-size: 0.85rem; color: #64748b; font-weight: 500;">-</div>
+      
+      <div class="label">Total Amount</div>
+      <div id="checkout-amount" class="amount">PKR 0</div>
+      
+      <!-- OTP input container -->
+      <div id="otp-container" style="display: none; margin-top: 15px; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+        <div class="label" style="color: #ef4444;">🔒 OTP Required (Large Transaction)</div>
+        <input type="text" id="otp-code" class="otp-input" placeholder="000000" maxlength="6">
+        <p style="font-size: 0.75rem; color: #64748b; margin-top: 5px;">Enter OTP sent to your email.</p>
+      </div>
+    </div>
+
+    <button id="pay-btn" class="btn" disabled>Pay Now</button>
+    <button id="cancel-btn" class="btn btn-danger" style="display: none;">Cancel Checkout</button>
+    
+    <div id="status-msg" class="error"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

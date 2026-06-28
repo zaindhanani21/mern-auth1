@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import Signup from "./components/SignUp";
 import Signin from "./components/SignIn";
 import Dashboard from "./components/Dashboard";
-import { Elements } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
 import VerifyOtp from "./components/VerifyOtp";
 import LandingPage from "./components/LandingPage";
 
@@ -128,7 +126,7 @@ function App() {
         inactivityTimeoutRef.current = setTimeout(() => {
             setShowInactivityWarning(true);
             setWarningCountdown(60);
-        }, 1 * 60 * 1000); 
+        }, 15 * 60 * 1000); 
     };
 
     // 🔒 Click button to keep logged in
@@ -139,7 +137,7 @@ function App() {
         inactivityTimeoutRef.current = setTimeout(() => {
             setShowInactivityWarning(true);
             setWarningCountdown(60);
-        }, 4 * 60 * 1000);
+        }, 60 * 60 * 1000);
     };
 
     // 🔒 Effect to monitor user activity on window
@@ -155,7 +153,7 @@ function App() {
         inactivityTimeoutRef.current = setTimeout(() => {
             setShowInactivityWarning(true);
             setWarningCountdown(60);
-        }, 4 * 60 * 1000);
+        }, 60 * 60 * 1000);
 
         const events = ["mousemove", "click", "scroll", "keydown", "touchstart"];
         events.forEach((event) => {
@@ -248,11 +246,11 @@ function App() {
                 <VerifyOtp
                     pendingData={pendingSignupVerification}
                     isSignupFlow={true}
-                    onVerificationSuccess={(data) => {
-                        // User is now verified and has a token - go to dashboard
-                        setUserData(data);
+                                        onVerificationSuccess={(data) => {
+                        // Registration complete, clear pending and set success message
                         setPendingSignupVerification(null);
-                        setCurrentPage(PAGES.DASHBOARD);
+                        setGlobalMessage({ text: "Registration successful! Please sign in to your account." });
+                        setCurrentPage(PAGES.SIGNIN); // Go to Sign In page
                     }}
                     onCancel={() => {
                         setGlobalMessage(null);
@@ -263,16 +261,13 @@ function App() {
 
             {/* USER DASHBOARD ROUTE */}
             {currentPage === PAGES.DASHBOARD && (
-                <Elements stripe={loadStripe("pk_test_51TSVFeDmC8zjQ7IGxqb8Hf2siIt1ixOpE1IpNevJup4eXC5JiLVU0LefrNAK3Kse9efMuAXscZXtiIVjrrrYKCQ200qQUcS87t")}>
-                    <Dashboard
-                        userData={userData}
-                        onLogout={handleLogout}
-                    // 🟢 Removed Admin Navigation handler
-                    />
-                </Elements>
+                <Dashboard
+                    userData={userData}
+                    onLogout={handleLogout}
+                />
             )}
 
-                        {/* ⏳ Premium Inactivity Warning Modal */}
+            {/* ⏳ Premium Inactivity Warning Modal */}
             {showInactivityWarning && (
                 <div style={{
                     position: "fixed",

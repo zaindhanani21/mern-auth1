@@ -30,6 +30,34 @@ const WalletSchema = new mongoose.Schema(
             enum: ['ACTIVE', 'FROZEN'],
             default: 'ACTIVE'
         },
+        transactionPin: {
+            type: String,
+            default: null
+        },
+        isPinSet: {
+            type: Boolean,
+            default: false
+        },
+        failedPinAttempts: {
+            type: Number,
+            default: 0
+        },
+        pinResetOtp: {
+            type: String,
+            default: null
+        },
+        pinResetOtpExpiry: {
+            type: Date,
+            default: null
+        },
+        pinBlockUntil: {
+            type: Date,
+            default: null
+        },
+        mustResetPin: {
+            type: Boolean,
+            default: false
+        },
         isDeleted: { type: Boolean, default: false }
     },
     { timestamps: true }

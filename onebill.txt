@@ -1,0 +1,435 @@
+================================================================================
+🔌 WALLEXA SIMULATED UTILITY BILLS (1LINK UBPS SWITCH REGISTRY)
+================================================================================
+Total Seeded Karachi Bills: 44 Records
+Mixed: K-Electric (Electricity), SSGC (Gas), KWSB (Water), PTCL (Internet)
+
+* NOTE ON TESTING LATE BILLS:
+  Bills with May 2026 billing month (due dates June 11-14, 2026) are PAST DUE.
+  Paying these bills will automatically charge the Late Fee (Amount After Due Date).
+  Bills with June 2026 billing month (due dates in July 2026) are UNPAID & ACTIVE.
+  Paying these will charge the normal Amount Due (Within Due Date).
+
+================================================================================
+1. ELECTRICITY BILLS (K-Electric)
+================================================================================
+* Default Seed Bill:
+  - Consumer Number: 1300023459157
+  - Contract Number: 31707347
+  - Owner Name: MUHAMMAD SIDDIQ KHAN
+  - Billing Month: June 2026
+  - Amount Due (Within Due Date): PKR 28,457
+  - Late Surcharge Fee: PKR 1,380
+  - Amount After Due Date: PKR 29,837
+  - Due Date: 08 July 2026 (FUTURE / NO LATE FEE)
+  - Status: UNPAID
+
+* Seeded Test Bills:
+  1. Consumer Number: 1300000000001
+     - Owner Name: Muhammad Ali
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 8,400
+     - Late Fee: PKR 420
+     - Amount After Due Date (Gross): PKR 8,820
+     - Due Date: 11 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  2. Consumer Number: 1300000000002
+     - Owner Name: Sana Sheikh
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 8,800
+     - Late Fee: PKR 440
+     - Amount After Due Date (Gross): PKR 9,240
+     - Due Date: 12 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  3. Consumer Number: 1300000000003
+     - Owner Name: Ayesha Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 9,200
+     - Late Fee: PKR 460
+     - Amount After Due Date (Gross): PKR 9,660
+     - Due Date: 13 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  4. Consumer Number: 1300000000004
+     - Owner Name: Sarah Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 9,600
+     - Late Fee: PKR 480
+     - Amount After Due Date (Gross): PKR 10,080
+     - Due Date: 14 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  5. Consumer Number: 1300000000005
+     - Owner Name: Hamza Malik
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 10,000
+     - Late Fee: PKR 500
+     - Amount After Due Date (Gross): PKR 10,500
+     - Due Date: 25 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  6. Consumer Number: 1300000000006
+     - Owner Name: Usman Ahmad
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 10,400
+     - Late Fee: PKR 520
+     - Amount After Due Date (Gross): PKR 10,920
+     - Due Date: 26 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  7. Consumer Number: 1300000000007
+     - Owner Name: Ahmad Ali
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 10,800
+     - Late Fee: PKR 540
+     - Amount After Due Date (Gross): PKR 11,340
+     - Due Date: 27 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  8. Consumer Number: 1300000000008
+     - Owner Name: Danish Zaidi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 11,200
+     - Late Fee: PKR 560
+     - Amount After Due Date (Gross): PKR 11,760
+     - Due Date: 28 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  9. Consumer Number: 1300000000009
+     - Owner Name: Fatima Bibi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 11,600
+     - Late Fee: PKR 580
+     - Amount After Due Date (Gross): PKR 12,180
+     - Due Date: 29 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  10. Consumer Number: 1300000000010
+     - Owner Name: Kashif Mahmood
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 12,000
+     - Late Fee: PKR 600
+     - Amount After Due Date (Gross): PKR 12,600
+     - Due Date: 30 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+
+================================================================================
+2. GAS BILLS (SSGC)
+================================================================================
+* Default Seed Bill:
+  - Consumer Number: 41998765432
+  - Contract Number: 88992211
+  - Owner Name: SARAH KHAN
+  - Billing Month: June 2026
+  - Amount Due (Within Due Date): PKR 3,450
+  - Late Surcharge Fee: PKR 250
+  - Amount After Due Date: PKR 3,700
+  - Due Date: 12 July 2026 (FUTURE / NO LATE FEE)
+  - Status: UNPAID
+
+* Seeded Test Bills:
+  1. Consumer Number: 4100000000001
+     - Owner Name: Muhammad Ali
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 1,900
+     - Late Fee: PKR 152
+     - Amount After Due Date (Gross): PKR 2,052
+     - Due Date: 11 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  2. Consumer Number: 4100000000002
+     - Owner Name: Sana Sheikh
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 2,300
+     - Late Fee: PKR 184
+     - Amount After Due Date (Gross): PKR 2,484
+     - Due Date: 12 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  3. Consumer Number: 4100000000003
+     - Owner Name: Ayesha Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 2,700
+     - Late Fee: PKR 216
+     - Amount After Due Date (Gross): PKR 2,916
+     - Due Date: 13 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  4. Consumer Number: 4100000000004
+     - Owner Name: Sarah Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 3,100
+     - Late Fee: PKR 248
+     - Amount After Due Date (Gross): PKR 3,348
+     - Due Date: 14 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  5. Consumer Number: 4100000000005
+     - Owner Name: Hamza Malik
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 3,500
+     - Late Fee: PKR 280
+     - Amount After Due Date (Gross): PKR 3,780
+     - Due Date: 25 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  6. Consumer Number: 4100000000006
+     - Owner Name: Usman Ahmad
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 3,900
+     - Late Fee: PKR 312
+     - Amount After Due Date (Gross): PKR 4,212
+     - Due Date: 26 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  7. Consumer Number: 4100000000007
+     - Owner Name: Ahmad Ali
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,300
+     - Late Fee: PKR 344
+     - Amount After Due Date (Gross): PKR 4,644
+     - Due Date: 27 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  8. Consumer Number: 4100000000008
+     - Owner Name: Danish Zaidi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,700
+     - Late Fee: PKR 376
+     - Amount After Due Date (Gross): PKR 5,076
+     - Due Date: 28 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  9. Consumer Number: 4100000000009
+     - Owner Name: Fatima Bibi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 5,100
+     - Late Fee: PKR 408
+     - Amount After Due Date (Gross): PKR 5,508
+     - Due Date: 29 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  10. Consumer Number: 4100000000010
+     - Owner Name: Kashif Mahmood
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 5,500
+     - Late Fee: PKR 440
+     - Amount After Due Date (Gross): PKR 5,940
+     - Due Date: 30 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+
+================================================================================
+3. WATER BILLS (KWSB)
+================================================================================
+* Default Seed Bill:
+  - Consumer Number: 50998765432
+  - Contract Number: 77443322
+  - Owner Name: KASHIF MAHMOOD
+  - Billing Month: June 2026
+  - Amount Due (Within Due Date): PKR 1,800
+  - Late Surcharge Fee: PKR 150
+  - Amount After Due Date: PKR 1,950
+  - Due Date: 15 July 2026 (FUTURE / NO LATE FEE)
+  - Status: UNPAID
+
+* Seeded Test Bills:
+  1. Consumer Number: 5000000000001
+     - Owner Name: Muhammad Ali
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 1,300
+     - Late Fee: PKR 104
+     - Amount After Due Date (Gross): PKR 1,404
+     - Due Date: 11 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  2. Consumer Number: 5000000000002
+     - Owner Name: Sana Sheikh
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 1,700
+     - Late Fee: PKR 136
+     - Amount After Due Date (Gross): PKR 1,836
+     - Due Date: 12 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  3. Consumer Number: 5000000000003
+     - Owner Name: Ayesha Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 2,100
+     - Late Fee: PKR 168
+     - Amount After Due Date (Gross): PKR 2,268
+     - Due Date: 13 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  4. Consumer Number: 5000000000004
+     - Owner Name: Sarah Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 2,500
+     - Late Fee: PKR 200
+     - Amount After Due Date (Gross): PKR 2,700
+     - Due Date: 14 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  5. Consumer Number: 5000000000005
+     - Owner Name: Hamza Malik
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 2,900
+     - Late Fee: PKR 232
+     - Amount After Due Date (Gross): PKR 3,132
+     - Due Date: 25 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  6. Consumer Number: 5000000000006
+     - Owner Name: Usman Ahmad
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 3,300
+     - Late Fee: PKR 264
+     - Amount After Due Date (Gross): PKR 3,564
+     - Due Date: 26 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  7. Consumer Number: 5000000000007
+     - Owner Name: Ahmad Ali
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 3,700
+     - Late Fee: PKR 296
+     - Amount After Due Date (Gross): PKR 3,996
+     - Due Date: 27 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  8. Consumer Number: 5000000000008
+     - Owner Name: Danish Zaidi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,100
+     - Late Fee: PKR 328
+     - Amount After Due Date (Gross): PKR 4,428
+     - Due Date: 28 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  9. Consumer Number: 5000000000009
+     - Owner Name: Fatima Bibi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,500
+     - Late Fee: PKR 360
+     - Amount After Due Date (Gross): PKR 4,860
+     - Due Date: 29 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  10. Consumer Number: 5000000000010
+     - Owner Name: Kashif Mahmood
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,900
+     - Late Fee: PKR 392
+     - Amount After Due Date (Gross): PKR 5,292
+     - Due Date: 30 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+
+================================================================================
+4. INTERNET BILLS (PTCL)
+================================================================================
+* Default Seed Bill:
+  - Consumer Number: 10008765432
+  - Contract Number: 55667788
+  - Owner Name: ZAIN DHANANI
+  - Billing Month: June 2026
+  - Amount Due (Within Due Date): PKR 4,500
+  - Late Surcharge Fee: PKR 300
+  - Amount After Due Date: PKR 4,800
+  - Due Date: 18 July 2026 (FUTURE / NO LATE FEE)
+  - Status: UNPAID
+
+* Seeded Test Bills:
+  1. Consumer Number: 1000000000001
+     - Owner Name: Muhammad Ali
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 2,900
+     - Late Fee: PKR 203
+     - Amount After Due Date (Gross): PKR 3,103
+     - Due Date: 11 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  2. Consumer Number: 1000000000002
+     - Owner Name: Sana Sheikh
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 3,300
+     - Late Fee: PKR 231
+     - Amount After Due Date (Gross): PKR 3,531
+     - Due Date: 12 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  3. Consumer Number: 1000000000003
+     - Owner Name: Ayesha Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 3,700
+     - Late Fee: PKR 259
+     - Amount After Due Date (Gross): PKR 3,959
+     - Due Date: 13 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  4. Consumer Number: 1000000000004
+     - Owner Name: Sarah Khan
+     - Billing Month: May 2026
+     - Amount Due (Net): PKR 4,100
+     - Late Fee: PKR 287
+     - Amount After Due Date (Gross): PKR 4,387
+     - Due Date: 14 June 2026 (PAST DUE / LATE SURCHARGE APPLIES)
+     - Status: UNPAID
+
+  5. Consumer Number: 1000000000005
+     - Owner Name: Hamza Malik
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,500
+     - Late Fee: PKR 315
+     - Amount After Due Date (Gross): PKR 4,815
+     - Due Date: 25 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  6. Consumer Number: 1000000000006
+     - Owner Name: Usman Ahmad
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 4,900
+     - Late Fee: PKR 343
+     - Amount After Due Date (Gross): PKR 5,243
+     - Due Date: 26 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  7. Consumer Number: 1000000000007
+     - Owner Name: Ahmad Ali
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 5,300
+     - Late Fee: PKR 371
+     - Amount After Due Date (Gross): PKR 5,671
+     - Due Date: 27 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  8. Consumer Number: 1000000000008
+     - Owner Name: Danish Zaidi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 5,700
+     - Late Fee: PKR 399
+     - Amount After Due Date (Gross): PKR 6,099
+     - Due Date: 28 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  9. Consumer Number: 1000000000009
+     - Owner Name: Fatima Bibi
+     - Billing Month: June 2026
+     - Amount Due (Net): PKR 6,100
+     - Late Fee: PKR 427
+     - Amount After Due Date (Gross): PKR 6,527
+     - Due Date: 29 July 2026 (FUTURE / NO LATE FEE)
+     - Status: UNPAID
+
+  10. Consumer Number: 1000000000010
+      - Owner Name: Kashif Mahmood
+      - Billing Month: June 2026
+      - Amount Due (Net): PKR 6,500
+      - Late Fee: PKR 455
+      - Amount After Due Date (Gross): PKR 6,955
+      - Due Date: 30 July 2026 (FUTURE / NO LATE FEE)
+      - Status: UNPAID
+================================================================================

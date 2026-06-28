@@ -1,10 +1,10 @@
-import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
 
 dotenv.config();
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -14,12 +14,16 @@ const transporter = nodemailer.createTransport({
 /**
  * Send Money Received Email
  */
-export const sendMoneyReceivedEmail = async (recipientEmail, senderName, amount) => {
+export const sendMoneyReceivedEmail = async (
+  recipientEmail,
+  senderName,
+  amount,
+) => {
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: recipientEmail,
-      subject: '💰 Money Received - Wallexa',
+      subject: "💰 Money Received - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -67,23 +71,27 @@ export const sendMoneyReceivedEmail = async (recipientEmail, senderName, amount)
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Money received email sent to ${recipientEmail}`);
   } catch (error) {
-    console.error('❌ Error sending money received email:', error);
+    console.error("❌ Error sending money received email:", error);
   }
 };
 
 /**
  * Send Money Sent Email
  */
-export const sendMoneySentEmail = async (senderEmail, recipientName, amount) => {
+export const sendMoneySentEmail = async (
+  senderEmail,
+  recipientName,
+  amount,
+) => {
   try {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: senderEmail,
-      subject: '📤 Money Sent - Wallexa',
+      subject: "📤 Money Sent - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -131,11 +139,11 @@ export const sendMoneySentEmail = async (senderEmail, recipientName, amount) => 
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Money sent email sent to ${senderEmail}`);
   } catch (error) {
-    console.error('❌ Error sending money sent email:', error);
+    console.error("❌ Error sending money sent email:", error);
   }
 };
 
@@ -147,7 +155,7 @@ export const sendFundsAddedEmail = async (userEmail, amount) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: userEmail,
-      subject: '💳 Funds Added - Wallexa',
+      subject: "💳 Funds Added - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -191,11 +199,11 @@ export const sendFundsAddedEmail = async (userEmail, amount) => {
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Funds added email sent to ${userEmail}`);
   } catch (error) {
-    console.error('❌ Error sending funds added email:', error);
+    console.error("❌ Error sending funds added email:", error);
   }
 };
 
@@ -207,7 +215,7 @@ export const sendSecurityAlertEmail = async (userEmail, reason) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: userEmail,
-      subject: '🚨 Security Alert: Wallet Frozen - Wallexa',
+      subject: "🚨 Security Alert: Wallet Frozen - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -235,11 +243,11 @@ export const sendSecurityAlertEmail = async (userEmail, reason) => {
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Security alert email sent to ${userEmail}`);
   } catch (error) {
-    console.error('❌ Error sending security alert email:', error);
+    console.error("❌ Error sending security alert email:", error);
   }
 };
 
@@ -251,7 +259,7 @@ export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: userEmail,
-      subject: '🔒 Transaction Verification OTP - Wallexa',
+      subject: "🔒 Transaction Verification OTP - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -274,7 +282,7 @@ export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
             </div>
             
             <p style="font-size: 14px; color: #64748b; margin-top: 30px;">
-              This code is valid for 5 minutes. If you did not initiate this transaction, please freeze your wallet immediately.
+              This code is valid for 10 minutes. If you did not initiate this transaction, please freeze your wallet immediately.
             </p>
           </div>
           
@@ -283,11 +291,11 @@ export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Transaction verification OTP email sent to ${userEmail}`);
   } catch (error) {
-    console.error('❌ Error sending transaction OTP email:', error);
+    console.error("❌ Error sending transaction OTP email:", error);
   }
 };
 
@@ -299,7 +307,7 @@ export const sendInactivityLogoutEmail = async (userEmail, userName) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: userEmail,
-      subject: '🔒 Security Alert: Session Expired - Wallexa',
+      subject: "🔒 Security Alert: Session Expired - Wallexa",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
           <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -333,10 +341,87 @@ export const sendInactivityLogoutEmail = async (userEmail, userName) => {
             <p>© 2026 Wallexa. All rights reserved.</p>
           </div>
         </div>
-      `
+      `,
     });
     console.log(`✅ Inactivity logout email sent to ${userEmail}`);
   } catch (error) {
-    console.error('❌ Error sending inactivity logout email:', error);
+    console.error("❌ Error sending inactivity logout email:", error);
+  }
+};
+
+/**
+ * Send PIN Changed Notification Email
+ */
+export const sendPinChangedEmail = async (userEmail, userName) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: userEmail,
+      subject: "🔒 Security Confirmation: Transaction PIN Changed - Wallexa",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Wallexa Security</h1>
+          </div>
+          
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <h2 style="color: #10b981; margin-top: 0;">Transaction PIN Changed Successfully</h2>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              Hello <strong>${userName}</strong>,
+            </p>
+            
+            <p style="font-size: 16px; color: #334155; line-height: 1.6;">
+              This is a security confirmation that your 6-digit transaction PIN has been successfully changed/reset.
+            </p>
+            
+            <p style="font-size: 16px; color: #ef4444; line-height: 1.6; font-weight: bold;">
+              If you did not make this change, please contact Wallexa support immediately or lock your account to secure your funds.
+            </p>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; color: #94a3b8; font-size: 12px;">
+            <p>This is an automated security message from Wallexa. Please do not reply.</p>
+            <p>© 2026 Wallexa. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+    });
+    console.log(`✅ PIN change notification email sent to ${userEmail}`);
+  } catch (error) {
+    console.error("❌ Error sending PIN change email:", error);
+  }
+};
+
+
+/**
+ * Send Split Bill Request Email
+ */
+export const sendSplitRequestEmail = async (
+  recipientEmail,
+  requesterName,
+  amount,
+  description
+) => {
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: recipientEmail,
+      subject: "🧾 Split Bill Request - Wallexa",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #667eea;">🧾 Split Bill Request</h2>
+          <p>Hi there,</p>
+          <p><strong>${requesterName}</strong> has requested you to pay your share of a split bill.</p>
+          <div style="background: #f1f5f9; padding: 20px; border-radius: 8px;">
+            <p><strong>Description:</strong> ${description}</p>
+            <p><strong>Your Share:</strong> PKR ${amount.toLocaleString()}</p>
+          </div>
+          <p>Please log in to your Wallexa account to accept and pay this request.</p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Error sending split request email:", error);
   }
 };
