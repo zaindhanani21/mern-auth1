@@ -609,7 +609,7 @@ export default function Dashboard({ userData, onLogout }) {
       }
     };
   }, []);
-   const prepareReceiptForPdf = (elementId) => {
+  const prepareReceiptForPdf = (elementId) => {
     const element = document.getElementById(elementId);
     if (!element) return null;
 
@@ -625,15 +625,16 @@ export default function Dashboard({ userData, onLogout }) {
     clonedElement.style.maxWidth = "520px";
     clonedElement.style.width = "520px";
     clonedElement.style.position = "fixed";
-    clonedElement.style.left = "-99999px";
     clonedElement.style.top = "0";
+    clonedElement.style.left = "0";
+    clonedElement.style.pointerEvents = "none";
     clonedElement.style.zIndex = "-1";
 
     document.body.appendChild(clonedElement);
     return clonedElement;
   };
 
-  const getPdfOptions = (filename, height) => ({
+  const getPdfOptions = (filename, width) => ({
     margin: [12, 12, 12, 12],
     filename,
     image: { type: "jpeg", quality: 0.98 },
@@ -641,14 +642,33 @@ export default function Dashboard({ userData, onLogout }) {
       scale: 2,
       useCORS: true,
       backgroundColor: "#1e293b",
-      scrollY: 0,
       scrollX: 0,
-      height,
-      windowHeight: height,
+      scrollY: -window.scrollY,
+      width,
     },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     pagebreak: { mode: ["avoid-all", "css", "legacy"] },
   });
+
+  const generateReceiptPdf = (clonedElement, filename) =>
+    window
+      .html2pdf()
+      .from(clonedElement)
+      .set(getPdfOptions(filename, clonedElement.scrollWidth));
+
+  const waitForLayout = () =>
+    new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+
+  const downloadPdfBlob = (pdfBlob, filename) => {
+    const url = URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const cleanupReceiptClone = (clonedElement) => {
     if (clonedElement?.parentNode) {
@@ -656,35 +676,27 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  const handleDownloadPdf = (
+  const handleDownloadPdf = async (
     elementId,
     filename = "transaction_receipt.pdf",
   ) => {
     const clonedElement = prepareReceiptForPdf(elementId);
     if (!clonedElement) return;
 
-    const captureHeight = clonedElement.scrollHeight;
-    const opt = getPdfOptions(filename, captureHeight);
+    await waitForLayout();
 
-    window
-      .html2pdf()
-      .from(clonedElement)
-      .set(opt)
+    generateReceiptPdf(clonedElement, filename)
       .save()
       .finally(() => cleanupReceiptClone(clonedElement));
   };
 
-  const handleSharePdf = (elementId, filename = "transaction_receipt.pdf") => {
+  const handleSharePdf = async (elementId, filename = "transaction_receipt.pdf") => {
     const clonedElement = prepareReceiptForPdf(elementId);
     if (!clonedElement) return;
 
-    const captureHeight = clonedElement.scrollHeight;
-    const opt = getPdfOptions(filename, captureHeight);
+    await waitForLayout();
 
-    window
-      .html2pdf()
-      .from(clonedElement)
-      .set(opt)
+    generateReceiptPdf(clonedElement, filename)
       .output("blob")
       .then((pdfBlob) => {
         const file = new File([pdfBlob], filename, { type: "application/pdf" });
@@ -700,7 +712,7 @@ export default function Dashboard({ userData, onLogout }) {
               console.log("Share cancelled or failed:", err);
             });
         } else {
-          window.html2pdf().from(clonedElement).set(opt).save();
+          downloadPdfBlob(pdfBlob, filename);
           setToast({
             title: "PDF Downloaded",
             msg: "File sharing is not supported on this device. PDF has been saved instead.",
@@ -6519,7 +6531,7 @@ like: "👍",
                       className="close-btn"
                       onClick={() => setShowBillConfirm(false)}
                     >
-                      �
+                      {"\u00D7"}
                     </button>
                   </div>
 
@@ -9294,7 +9306,7 @@ like: "👍",
                   padding: 0,
                 }}
               >
-                ×
+                {"\u00D7"}
               </button>
               {/* Success Badge / Icon */}
               <div style={{ marginBottom: "20px" }}>
@@ -9641,7 +9653,7 @@ like: "👍",
                   className="close-btn"
                   onClick={() => setShowFreezeConfirm(false)}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -9710,7 +9722,7 @@ like: "👍",
                     setPinWizardMode("change");
                   }}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -10242,7 +10254,7 @@ like: "👍",
                     setPendingTx(null);
                   }}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
               <p
@@ -10358,7 +10370,7 @@ like: "👍",
                     setOtp("");
                   }}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
               <p
@@ -10428,7 +10440,7 @@ like: "👍",
                   className="close-btn"
                   onClick={() => setShowSendConfirm(false)}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -10553,7 +10565,7 @@ like: "👍",
                   className="close-btn"
                   onClick={() => setShowQrConfirm(false)}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -10667,7 +10679,7 @@ like: "👍",
                   className="close-btn"
                   onClick={() => setShowExternalConfirm(false)}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -10799,7 +10811,7 @@ like: "👍",
                   className="close-btn"
                   onClick={() => setShowDeactivateConfirm(false)}
                 >
-                  �
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -11834,7 +11846,7 @@ like: "👍",
                   padding: 0,
                 }}
               >
-                �
+                {"\u00D7"}
               </button>
               {/* Green Success Tick */}
               <div style={{ marginBottom: "20px" }}>
@@ -12187,7 +12199,7 @@ like: "👍",
                   cursor: "pointer",
                 }}
               >
-                �
+                {"\u00D7"}
               </button>
 
               <h3
