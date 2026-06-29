@@ -599,6 +599,7 @@ export default function Dashboard({ userData, onLogout }) {
   const [openPostMenuId, setOpenPostMenuId] = useState(null); //   Post 3-dot menu (delete own post)
   const [editingCommentId, setEditingCommentId] = useState(null); //   Comment edit mode
   const [editingCommentText, setEditingCommentText] = useState(""); //   Comment edit text
+  const [confirmDialog, setConfirmDialog] = useState(null); //   Custom confirm modal
   const [reactionSubmittingPostId, setReactionSubmittingPostId] = useState(null); //   Prevents duplicate fast reaction clicks per post
   const [hoveredPostReactId, setHoveredPostReactId] = useState(null); //   Reaction picker popup show/hide control (desktop hover)
   const [activePostReactPickerId, setActivePostReactPickerId] = useState(null); //   Reaction picker open via tap/click (mobile + desktop)
@@ -1611,15 +1612,32 @@ export default function Dashboard({ userData, onLogout }) {
     );
   };
 
-  const handleDeleteComment = async (postId, commentId) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this comment? This cannot be undone.",
-      )
-    ) {
-      return;
-    }
+  const openConfirmDialog = ({
+    title,
+    message,
+    confirmLabel = "Confirm",
+    cancelLabel = "Cancel",
+    danger = false,
+    onConfirm,
+  }) => {
+    setConfirmDialog({
+      title,
+      message,
+      confirmLabel,
+      cancelLabel,
+      danger,
+      onConfirm,
+    });
+  };
 
+  const closeConfirmDialog = () => setConfirmDialog(null);
+
+  const handleConfirmDialogAction = () => {
+    if (confirmDialog?.onConfirm) confirmDialog.onConfirm();
+    closeConfirmDialog();
+  };
+
+  const performDeleteComment = async (postId, commentId) => {
     setOpenCommentMenuId(null);
     removeCommentFromState(postId, commentId);
     try {
@@ -1652,7 +1670,19 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  const handleSaveCommentEdit = async (postId, commentId) => {
+  const confirmDeleteComment = (postId, commentId) => {
+    openConfirmDialog({
+      title: "Delete comment?",
+      message:
+        "Are you sure you want to delete this comment? This cannot be undone.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: () => performDeleteComment(postId, commentId),
+    });
+  };
+
+  const performSaveCommentEdit = async (postId, commentId) => {
     let cleanText = editingCommentText.replace(/\s+/g, " ").trim();
     cleanText = cleanText.replace(/<[^>]*>/g, "");
     if (!cleanText) {
@@ -1669,12 +1699,6 @@ export default function Dashboard({ userData, onLogout }) {
         msg: "Comment cannot be longer than 300 characters.",
         type: "error",
       });
-      return;
-    }
-
-    if (
-      !window.confirm("Save changes to this comment?")
-    ) {
       return;
     }
 
@@ -1718,15 +1742,36 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  const handleDeletePost = async (postId) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this post? All comments and reactions will be removed.",
-      )
-    ) {
+  const handleSaveCommentEdit = (postId, commentId) => {
+    let cleanText = editingCommentText.replace(/\s+/g, " ").trim();
+    cleanText = cleanText.replace(/<[^>]*>/g, "");
+    if (!cleanText) {
+      setToast({
+        title: "Error",
+        msg: "Comment cannot be empty.",
+        type: "error",
+      });
+      return;
+    }
+    if (cleanText.length > 300) {
+      setToast({
+        title: "Limit Exceeded",
+        msg: "Comment cannot be longer than 300 characters.",
+        type: "error",
+      });
       return;
     }
 
+    openConfirmDialog({
+      title: "Save changes?",
+      message: "Do you want to save your changes to this comment?",
+      confirmLabel: "Save",
+      cancelLabel: "Cancel",
+      onConfirm: () => performSaveCommentEdit(postId, commentId),
+    });
+  };
+
+  const performDeletePost = async (postId) => {
     setOpenPostMenuId(null);
     removePostFromState(postId);
     try {
@@ -1759,6 +1804,18 @@ export default function Dashboard({ userData, onLogout }) {
         type: "error",
       });
     }
+  };
+
+  const confirmDeletePost = (postId) => {
+    openConfirmDialog({
+      title: "Delete post?",
+      message:
+        "Are you sure you want to delete this post? All comments and reactions will be removed.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      danger: true,
+      onConfirm: () => performDeletePost(postId),
+    });
   };
 
   const renderPostMenu = (post) => {
@@ -1809,7 +1866,7 @@ export default function Dashboard({ userData, onLogout }) {
           >
             <button
               type="button"
-              onClick={() => handleDeletePost(post._id)}
+              onClick={() => confirmDeletePost(post._id)}
               style={{
                 width: "100%",
                 background: "none",
@@ -11494,16 +11551,20 @@ export default function Dashboard({ userData, onLogout }) {
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            if (
-                                              !window.confirm(
+                                            openConfirmDialog({
+                                              title: "Edit comment?",
+                                              message:
                                                 "Do you want to edit this comment?",
-                                              )
-                                            ) {
-                                              return;
-                                            }
-                                            setOpenCommentMenuId(null);
-                                            setEditingCommentId(comment._id);
-                                            setEditingCommentText(comment.content);
+                                              confirmLabel: "Edit",
+                                              cancelLabel: "Cancel",
+                                              onConfirm: () => {
+                                                setOpenCommentMenuId(null);
+                                                setEditingCommentId(comment._id);
+                                                setEditingCommentText(
+                                                  comment.content,
+                                                );
+                                              },
+                                            });
                                           }}
                                           style={{
                                             width: "100%",
@@ -11523,7 +11584,7 @@ export default function Dashboard({ userData, onLogout }) {
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            handleDeleteComment(
+                                            confirmDeleteComment(
                                               activeCommentPost._id,
                                               comment._id,
                                             )
@@ -12868,6 +12929,75 @@ export default function Dashboard({ userData, onLogout }) {
                   disabled={loading} // Double-click block karega
                 >
                   {loading ? "Sharing..." : "Post to Feed"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* CUSTOM CONFIRM MODAL */}
+        {confirmDialog && (
+          <div
+            className="modal-overlay"
+            style={{ zIndex: 10050 }}
+            onClick={closeConfirmDialog}
+          >
+            <div
+              className="modal-card"
+              style={{ maxWidth: "380px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h3 style={{ color: "#f8fafc", margin: 0 }}>
+                  {confirmDialog.title}
+                </h3>
+                <button
+                  type="button"
+                  className="close-btn"
+                  onClick={closeConfirmDialog}
+                  aria-label="Close"
+                >
+                  {"\u00D7"}
+                </button>
+              </div>
+              <p
+                style={{
+                  color: "#cbd5e1",
+                  fontSize: "14px",
+                  textAlign: "center",
+                  lineHeight: 1.5,
+                  margin: "0 0 24px",
+                }}
+              >
+                {confirmDialog.message}
+              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={closeConfirmDialog}
+                  style={{ width: "100%" }}
+                >
+                  {confirmDialog.cancelLabel}
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmDialogAction}
+                  style={{
+                    width: "100%",
+                    background: confirmDialog.danger ? "#ef4444" : undefined,
+                    boxShadow: confirmDialog.danger
+                      ? "0 4px 15px rgba(239, 68, 68, 0.3)"
+                      : undefined,
+                  }}
+                >
+                  {confirmDialog.confirmLabel}
                 </button>
               </div>
             </div>
