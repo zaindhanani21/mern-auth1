@@ -3054,8 +3054,14 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        // Update local React state taake screen directly main feed par redirect ho jaye!
-        setProfile((prev) => ({ ...prev, username: data.username }));
+        setProfile((prev) => ({
+          ...prev,
+          username: data.username,
+          displayName: data.displayName,
+          socialActive: true,
+        }));
+        fetchFriends();
+        fetchHomeFeed();
         setToast({
           title: "Success",
           msg: "Social Feed activated successfully!",
@@ -3910,7 +3916,7 @@ export default function Dashboard({ userData, onLogout }) {
           className="primary-button"
           disabled={loading || isFrozen}
         >
-          {loading ? "Processing..." : "Proceed to Pay"}
+          {loading ? "Processing..." : "Proceed"}
         </button>
       </form>
     </div>
@@ -4165,7 +4171,7 @@ export default function Dashboard({ userData, onLogout }) {
                 setPublicUserPosts([]);
               }}
             >
-              ? Back to Feed
+              Back to Feed
             </button>
             <h2 className="page-title" style={{ margin: 0 }}>
               User Profile
@@ -4226,16 +4232,6 @@ export default function Dashboard({ userData, onLogout }) {
             >
               {selectedPublicUser.firstName} {selectedPublicUser.lastName}
             </h3>
-            <p
-              style={{
-                color: "#6366f1",
-                fontWeight: 600,
-                fontSize: "1rem",
-                margin: "0 0 20px 0",
-              }}
-            >
-              @{selectedPublicUser.username}
-            </p>
 
             {/* Dynamic Friendship Status Action Button */}
             <div style={{ maxWidth: "250px", margin: "0 auto" }}>
@@ -4447,7 +4443,7 @@ export default function Dashboard({ userData, onLogout }) {
                         fontSize: "1.2rem",
                       }}
                     >
-                      Unfriend @{selectedPublicUser.username}?
+                      Unfriend {selectedPublicUser.firstName}?
                     </h3>
                     <p
                       style={{
@@ -4617,10 +4613,10 @@ export default function Dashboard({ userData, onLogout }) {
                             fontSize: "0.95rem",
                           }}
                         >
-                          @{friend.username}
+                          {friend.firstName} {friend.lastName}
                         </div>
                         <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
-                          {friend.firstName}
+                          Friend
                         </div>
                       </div>
                       {/* Chat button */}
@@ -4689,7 +4685,7 @@ export default function Dashboard({ userData, onLogout }) {
                 paddingBottom: "10px",
               }}
             >
-              Posts by @{selectedPublicUser.username}
+              Posts by {selectedPublicUser.firstName} {selectedPublicUser.lastName}
             </h4>
 
             {(() => {
@@ -5063,7 +5059,7 @@ like: "👍",
               <Search size={18} style={{ position: "absolute", left: "15px", top: "13px", color: "#94a3b8" }} />
               <input
                 className="form-input"
-                placeholder="Search by name or username..."
+                placeholder="Search by name..."
                 value={msgSearchQuery}
                 onChange={(e) => setMsgSearchQuery(e.target.value)}
                 style={{ paddingLeft: "45px" }}
@@ -5103,7 +5099,6 @@ like: "👍",
                     </div>
                     <div>
                       <div style={{ color: "#f8fafc", fontWeight: 600 }}>{user.firstName} {user.lastName}</div>
-                      <div style={{ color: "#6366f1", fontSize: "0.85rem" }}>@{user.username}</div>
                     </div>
                   </div>
                   {user.status === "FRIENDS" ? (
@@ -5191,7 +5186,6 @@ like: "👍",
             </div>
             <div>
               <div style={{ color: "#f8fafc", fontWeight: 600 }}>{chatView.firstName} {chatView.lastName}</div>
-              {chatView.username && <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>@{chatView.username}</div>}
             </div>
           </div>
           <div ref={scrollRef} style={{ background: "#0f172a", borderRadius: "16px", border: "1px solid #334155", padding: "16px", minHeight: "350px", maxHeight: "420px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -5273,7 +5267,7 @@ like: "👍",
               />
               <input
                 className="form-input"
-                placeholder="Search by name or username (e.g. Zain)..."
+                placeholder="Search by name (e.g. Zain)..."
                 value={friendSearchQuery}
                 onChange={(e) => setFriendSearchQuery(e.target.value)}
                 style={{ paddingLeft: "45px" }}
@@ -5356,15 +5350,6 @@ like: "👍",
                       <div style={{ color: "#f8fafc", fontWeight: 600 }}>
                         {user.firstName} {user.lastName}
                       </div>
-                      <div
-                        style={{
-                          color: "#6366f1",
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                        }}
-                      >
-                        @{user.username}
-                      </div>
                     </div>
                   </div>
 
@@ -5403,7 +5388,7 @@ like: "👍",
           }}
         >
           <h4 style={{ color: "#f8fafc", marginBottom: "12px" }}>
-            What's on your mind, @{profile.username}?
+            What's on your mind, {profile.displayName || profile.firstName}?
           </h4>
           <form
             onSubmit={handleCreatePost}
@@ -5587,7 +5572,6 @@ like: "👍",
                         {post.author.firstName} {post.author.lastName}
                       </div>
                       <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
-                        @{post.author.username} �{" "}
                         {new Date(post.createdAt).toLocaleDateString()}{" "}
                         {new Date(post.createdAt).toLocaleTimeString([], {
                           hour: "2-digit",
@@ -6005,7 +5989,7 @@ like: "👍",
                 }
                 disabled={isFrozen}
               >
-                <option value="Electricity Bill">? Electricity Bill</option>
+                <option value="Electricity Bill">Electricity Bill</option>
                 <option value="Gas Bill">Gas Bill</option>
                 <option value="Water Bill">Water Bill</option>
                 <option value="Internet Bill">Internet Bill</option>
@@ -6926,7 +6910,7 @@ like: "👍",
                 fontWeight: 600,
               }}
             >
-              ? Back to Main Menu
+              Back to Main Menu
             </button>
           </div>
         )}
@@ -6957,7 +6941,7 @@ like: "👍",
                 fontWeight: 600,
               }}
             >
-              ? Cancel Scan
+              Cancel Scan
             </button>
             <p
               style={{
@@ -7023,7 +7007,7 @@ like: "👍",
                       fontWeight: 500,
                     }}
                   >
-                    ? Verified Wallexa Account
+                    Verified Wallexa Account
                   </div>
                   <div
                     style={{
@@ -7098,7 +7082,7 @@ like: "👍",
                 fontSize: "0.85rem",
               }}
             >
-              ? Cancel & Exit
+              Cancel & Exit
             </button>
           </div>
         )}
@@ -8934,7 +8918,6 @@ like: "👍",
                               </div>
                               <div style={{ flex: 1, overflow: "hidden" }}>
                                 <div style={{ color: "#f1f5f9", fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.sender?.firstName} {req.sender?.lastName}</div>
-                                {req.sender?.username && <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>@{req.sender.username}</div>}
                               </div>
                               <div style={{ display: "flex", gap: "6px" }}>
                                 <button onClick={() => { handleAcceptFriendRequest(req._id, req.sender?.firstName); setShowFriendsDropdown(false); }} style={{ background: "#10b981", color: "white", border: "none", borderRadius: "8px", padding: "5px 10px", fontSize: "0.78rem", cursor: "pointer", fontWeight: 600 }}>Accept</button>
@@ -10976,18 +10959,6 @@ like: "👍",
                         ? `${activeCommentPost.author.firstName} ${activeCommentPost.author.lastName || ""}`
                         : "User"}
                     </div>
-                    <div
-                      style={{
-                        color: "#6366f1",
-                        fontSize: "0.8rem",
-                        fontWeight: 600,
-                      }}
-                    >
-                      @
-                      {activeCommentPost.author
-                        ? activeCommentPost.author.username
-                        : "user"}
-                    </div>
                   </div>
                 </div>
                 <p
@@ -11119,15 +11090,7 @@ like: "👍",
                                   fontSize: "0.9rem",
                                 }}
                               >
-                                {comment.author.firstName}
-                              </span>
-                              <span
-                                style={{
-                                  color: "#64748b",
-                                  fontSize: "0.75rem",
-                                }}
-                              >
-                                @{comment.author.username}
+                                {comment.author.firstName} {comment.author.lastName}
                               </span>
                             </div>
                             <p
@@ -11389,15 +11352,6 @@ like: "👍",
                             }}
                           >
                             {req.sender.firstName} {req.sender.lastName}
-                          </div>
-                          <div
-                            style={{
-                              color: "#6366f1",
-                              fontSize: "0.8rem",
-                              fontWeight: 600,
-                            }}
-                          >
-                            @{req.sender.username}
                           </div>
                         </div>
                       </div>
@@ -11725,15 +11679,6 @@ like: "👍",
                                     }}
                                   >
                                     {r.displayName} {isMe ? "(You)" : ""}
-                                  </div>
-                                  <div
-                                    style={{
-                                      color: "#6366f1",
-                                      fontSize: "0.8rem",
-                                      fontWeight: 600,
-                                    }}
-                                  >
-                                    @{r.username}
                                   </div>
                                 </div>
                               </div>
