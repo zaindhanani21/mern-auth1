@@ -60,7 +60,7 @@ export const sendMoneyReceivedEmail = async (
             </p>
             
             <div style="text-align: center; margin-top: 30px;">
-              <a href="http://localhost:5173" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+              <a href="https://mern-auth1-flame.vercel.app" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
                 View Dashboard
               </a>
             </div>
@@ -128,7 +128,7 @@ export const sendMoneySentEmail = async (
             </p>
             
             <div style="text-align: center; margin-top: 30px;">
-              <a href="http://localhost:5173" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+              <a href="https://mern-auth1-flame.vercel.app" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
                 View Dashboard
               </a>
             </div>
@@ -188,7 +188,7 @@ export const sendFundsAddedEmail = async (userEmail, amount) => {
             </p>
             
             <div style="text-align: center; margin-top: 30px;">
-              <a href="http://localhost:5173" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+              <a href="https://mern-auth1-flame.vercel.app" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
                 View Dashboard
               </a>
             </div>
@@ -330,7 +330,7 @@ export const sendInactivityLogoutEmail = async (userEmail, userName) => {
             </p>
             
             <div style="text-align: center; margin-top: 30px;">
-              <a href="http://localhost:5173" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
+              <a href="https://mern-auth1-flame.vercel.app" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600;">
                 Log In Again
               </a>
             </div>

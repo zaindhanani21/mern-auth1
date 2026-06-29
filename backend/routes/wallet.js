@@ -384,8 +384,8 @@ router.post("/stripe-initiate", protect, async (req, res) => {
         },
       ],
       mode: "payment",
-      success_url: `http://localhost:5000/api/wallet/stripe-callback?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/dashboard`,
+      success_url: `https://mern-auth1-qnmh.onrender.com/api/wallet/stripe-callback?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://mern-auth1-flame.vercel.app/dashboard`,
       metadata: {
         userId: req.user._id.toString(),
         amount: amount.toString(),
@@ -413,7 +413,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://localhost:5173/dashboard?status=failed&message=Missing+session+id",
+      "https://mern-auth1-flame.vercel.app/dashboard?status=failed&message=Missing+session+id",
     );
     }
 
@@ -424,7 +424,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://localhost:5173/dashboard?status=failed&message=Payment+not+completed",
+      "https://mern-auth1-flame.vercel.app/dashboard?status=failed&message=Payment+not+completed",
     );
     }
 
@@ -435,7 +435,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://localhost:5173/dashboard?status=failed&message=Invalid+payment+metadata",
+      "https://mern-auth1-flame.vercel.app/dashboard?status=failed&message=Invalid+payment+metadata",
     );
     }
 
@@ -447,7 +447,7 @@ router.get("/stripe-callback", async (req, res) => {
       await session.abortTransaction();
       session.endSession();
       return res.redirect(
-      "http://localhost:5173/dashboard?status=success&message=Funds+already+credited",
+      "https://mern-auth1-flame.vercel.app/dashboard?status=success&message=Funds+already+credited",
     );
     }
 
@@ -490,13 +490,13 @@ router.get("/stripe-callback", async (req, res) => {
     // Redirect back to frontend
        // Line 463
        // Redirect back to frontend with details
-    return res.redirect(`http://localhost:5173/dashboard?status=success&amount=${amount}&txId=${tx._id}`);
+    return res.redirect(`https://mern-auth1-flame.vercel.app/dashboard?status=success&amount=${amount}&txId=${tx._id}`);
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Stripe Verification Error:", error);
     return res.redirect(
-      `http://localhost:5173/dashboard?status=failed&message=${encodeURIComponent(error.message)}`,
+      `https://mern-auth1-flame.vercel.app/dashboard?status=failed&message=${encodeURIComponent(error.message)}`,
     );
   }
 });

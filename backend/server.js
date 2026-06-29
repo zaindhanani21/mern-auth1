@@ -21,7 +21,7 @@ const server = http.createServer(app); // 🟢 Wrap Express with HTTP Server
 // 🟢 Initialize Socket.IO
 const io = new Server(server, {
     cors: {
-        origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173"],
+        origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173", "https://mern-auth1-flame.vercel.app"],
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -31,7 +31,7 @@ const io = new Server(server, {
 app.use(express.json({ limit: '10mb' })); // Increased limit for base64 images
 app.use(express.urlencoded({ extended: true })); // 🟢 Safepay POST data parser
 app.use(cors({
-    origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173"],
+    origin: ["http://192.168.43.54:5173", "http://127.0.0.1:5173", "http://localhost:5173", "https://mern-auth1-flame.vercel.app"],
     credentials: true,
 }));
 
