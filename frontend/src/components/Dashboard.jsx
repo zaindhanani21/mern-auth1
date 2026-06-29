@@ -609,52 +609,17 @@ export default function Dashboard({ userData, onLogout }) {
       }
     };
   }, []);
-  const prepareReceiptForPdf = (elementId) => {
-    const element = document.getElementById(elementId);
-    if (!element) return null;
-
-    const clonedElement = element.cloneNode(true);
-    clonedElement.querySelectorAll(".no-print").forEach((el) => el.remove());
-
-    clonedElement.classList.remove("modal-card");
-    clonedElement.style.boxShadow = "none";
-    clonedElement.style.border = "none";
-    clonedElement.style.maxHeight = "none";
-    clonedElement.style.overflow = "visible";
-    clonedElement.style.height = "auto";
-    clonedElement.style.maxWidth = "520px";
-    clonedElement.style.width = "520px";
-    clonedElement.style.position = "fixed";
-    clonedElement.style.top = "0";
-    clonedElement.style.left = "0";
-    clonedElement.style.pointerEvents = "none";
-    clonedElement.style.zIndex = "-1";
-
-    document.body.appendChild(clonedElement);
-    return clonedElement;
-  };
-
-  const getPdfOptions = (filename, width) => ({
-    margin: [12, 12, 12, 12],
+  const getReceiptPdfOptions = (filename) => ({
+    margin: 10,
     filename,
     image: { type: "jpeg", quality: 0.98 },
     html2canvas: {
       scale: 2,
       useCORS: true,
       backgroundColor: "#1e293b",
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      width,
     },
     jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
   });
-
-  const generateReceiptPdf = (clonedElement, filename) =>
-    window
-      .html2pdf()
-      .from(clonedElement)
-      .set(getPdfOptions(filename, clonedElement.scrollWidth));
 
   const waitForLayout = () =>
     new Promise((resolve) => {
@@ -670,9 +635,35 @@ export default function Dashboard({ userData, onLogout }) {
     URL.revokeObjectURL(url);
   };
 
-  const cleanupReceiptClone = (clonedElement) => {
-    if (clonedElement?.parentNode) {
-      clonedElement.parentNode.removeChild(clonedElement);
+  const withReceiptPdfCapture = async (elementId, callback) => {
+    const element = document.getElementById(elementId);
+    if (!element) return null;
+
+    const overlay = element.closest(".modal-overlay");
+    const noPrintElements = [...element.querySelectorAll(".no-print")];
+    const hiddenDisplays = noPrintElements.map((el) => el.style.display);
+    const previousMaxHeight = element.style.maxHeight;
+    const previousOverflow = element.style.overflow;
+    const previousBackdrop = overlay?.style.backdropFilter ?? "";
+
+    noPrintElements.forEach((el) => {
+      el.style.display = "none";
+    });
+    element.style.maxHeight = "none";
+    element.style.overflow = "visible";
+    if (overlay) overlay.style.backdropFilter = "none";
+
+    await waitForLayout();
+
+    try {
+      return await callback(element);
+    } finally {
+      noPrintElements.forEach((el, index) => {
+        el.style.display = hiddenDisplays[index];
+      });
+      element.style.maxHeight = previousMaxHeight;
+      element.style.overflow = previousOverflow;
+      if (overlay) overlay.style.backdropFilter = previousBackdrop;
     }
   };
 
@@ -680,49 +671,47 @@ export default function Dashboard({ userData, onLogout }) {
     elementId,
     filename = "transaction_receipt.pdf",
   ) => {
-    const clonedElement = prepareReceiptForPdf(elementId);
-    if (!clonedElement) return;
-
-    await waitForLayout();
-
-    generateReceiptPdf(clonedElement, filename)
-      .save()
-      .finally(() => cleanupReceiptClone(clonedElement));
+    await withReceiptPdfCapture(elementId, (element) =>
+      window
+        .html2pdf()
+        .set(getReceiptPdfOptions(filename))
+        .from(element)
+        .save(),
+    );
   };
 
-  const handleSharePdf = async (elementId, filename = "transaction_receipt.pdf") => {
-    const clonedElement = prepareReceiptForPdf(elementId);
-    if (!clonedElement) return;
+  const handleSharePdf = async (
+    elementId,
+    filename = "transaction_receipt.pdf",
+  ) => {
+    const pdfBlob = await withReceiptPdfCapture(elementId, (element) =>
+      window
+        .html2pdf()
+        .set(getReceiptPdfOptions(filename))
+        .from(element)
+        .output("blob"),
+    );
 
-    await waitForLayout();
+    if (!pdfBlob) return;
 
-    generateReceiptPdf(clonedElement, filename)
-      .output("blob")
-      .then((pdfBlob) => {
-        const file = new File([pdfBlob], filename, { type: "application/pdf" });
+    const file = new File([pdfBlob], filename, { type: "application/pdf" });
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          navigator
-            .share({
-              files: [file],
-              title: "Wallexa Transaction Receipt",
-              text: "Please find attached my payment receipt.",
-            })
-            .catch((err) => {
-              console.log("Share cancelled or failed:", err);
-            });
-        } else {
-          downloadPdfBlob(pdfBlob, filename);
-          setToast({
-            title: "PDF Downloaded",
-            msg: "File sharing is not supported on this device. PDF has been saved instead.",
-            type: "info",
-          });
-        }
-      })
-      .finally(() => cleanupReceiptClone(clonedElement));
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({
+        files: [file],
+        title: "Wallexa Transaction Receipt",
+        text: "Please find attached my payment receipt.",
+      });
+    } else {
+      downloadPdfBlob(pdfBlob, filename);
+      setToast({
+        title: "PDF Downloaded",
+        msg: "File sharing is not supported on this device. PDF has been saved instead.",
+        type: "info",
+      });
+    }
   };
-  // --- INITIALIZATION ---
+    // --- INITIALIZATION ---
   const getToken = () => userData?.token || localStorage.getItem("userToken");
 
   const fetchData = useCallback(async () => {
