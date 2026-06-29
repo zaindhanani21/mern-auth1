@@ -1517,6 +1517,79 @@ router.delete("/posts/:postId", protect, async (req, res) => {
   }
 });
 
+// 🟢 PATCH /api/profile/posts/:postId - Edit own post (caption only for receipt posts)
+router.patch("/posts/:postId", protect, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { content } = req.body;
+
+    if (typeof content !== "string") {
+      return res.status(400).json({ message: "Post content is required!" });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found!" });
+    }
+
+    if (post.author.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "You are not authorized to edit this post!" });
+    }
+
+    let newContent;
+
+    if (post.content.includes("[RECEIPT_POST]")) {
+      let receipt;
+      try {
+        receipt = JSON.parse(post.content.replace("[RECEIPT_POST]", "").trim());
+      } catch {
+        return res.status(400).json({ message: "Invalid receipt post data!" });
+      }
+
+      let caption = content.replace(/\s+/g, " ").trim();
+      caption = caption.replace(/<[^>]*>/g, "");
+      if (caption.length > 300) {
+        return res
+          .status(400)
+          .json({ message: "Caption cannot be longer than 300 characters." });
+      }
+
+      receipt.caption = caption;
+      newContent = `[RECEIPT_POST]\n${JSON.stringify(receipt)}`;
+    } else {
+      let cleanContent = content.replace(/\s+/g, " ").trim();
+      cleanContent = cleanContent.replace(/<[^>]*>/g, "");
+      if (!cleanContent) {
+        return res
+          .status(400)
+          .json({ message: "Post content cannot be empty!" });
+      }
+      if (cleanContent.length > 300) {
+        return res
+          .status(400)
+          .json({ message: "Post content cannot exceed 300 characters!" });
+      }
+      newContent = cleanContent;
+    }
+
+    post.content = newContent;
+    await post.save();
+
+    if (req.io) {
+      req.io.emit("post_updated", { postId, content: newContent });
+    }
+
+    res.json({
+      message: "Post updated successfully!",
+      content: newContent,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // 🟢 PATCH /api/profile/posts/:postId/comments/:commentId - Edit own comment
 router.patch("/posts/:postId/comments/:commentId", protect, async (req, res) => {
   try {

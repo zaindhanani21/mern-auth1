@@ -67,6 +67,35 @@ const findMyReaction = (reactions, userId) =>
 const getEntityUserId = (entity) =>
   String(entity?._id || entity?.id || entity || "");
 
+const isReceiptPostContent = (content) =>
+  typeof content === "string" && content.includes("[RECEIPT_POST]");
+
+const getReceiptFromPostContent = (content) => {
+  const jsonStr = content.replace("[RECEIPT_POST]", "").trim();
+  return JSON.parse(jsonStr);
+};
+
+const getPostEditableText = (content) => {
+  if (isReceiptPostContent(content)) {
+    try {
+      const receipt = getReceiptFromPostContent(content);
+      return receipt.caption || "";
+    } catch {
+      return "";
+    }
+  }
+  return content || "";
+};
+
+const buildPostContentAfterEdit = (originalContent, editedText) => {
+  const trimmed = editedText.replace(/\s+/g, " ").trim().replace(/<[^>]*>/g, "");
+  if (isReceiptPostContent(originalContent)) {
+    const receipt = getReceiptFromPostContent(originalContent);
+    return `[RECEIPT_POST]\n${JSON.stringify({ ...receipt, caption: trimmed })}`;
+  }
+  return trimmed;
+};
+
 const computeOptimisticReactions = (reactions, userId, type, meta) => {
   const uid = String(userId);
   const list = reactions || [];
@@ -599,6 +628,10 @@ export default function Dashboard({ userData, onLogout }) {
   const [openPostMenuId, setOpenPostMenuId] = useState(null); //   Post 3-dot menu (delete own post)
   const [editingCommentId, setEditingCommentId] = useState(null); //   Comment edit mode
   const [editingCommentText, setEditingCommentText] = useState(""); //   Comment edit text
+  const [editingPostId, setEditingPostId] = useState(null); //   Post edit mode
+  const [editingPostText, setEditingPostText] = useState(""); //   Post edit text
+  const [editingPostOriginalContent, setEditingPostOriginalContent] =
+    useState(""); //   Original post content (for receipt caption edits)
   const [confirmDialog, setConfirmDialog] = useState(null); //   Custom confirm modal
   const [reactionSubmittingPostId, setReactionSubmittingPostId] = useState(null); //   Prevents duplicate fast reaction clicks per post
   const [hoveredPostReactId, setHoveredPostReactId] = useState(null); //   Reaction picker popup show/hide control (desktop hover)
@@ -1837,6 +1870,257 @@ export default function Dashboard({ userData, onLogout }) {
     });
   };
 
+  const updatePostContentInState = (postId, content) => {
+    const updater = (prev) =>
+      prev.map((p) => (p._id === postId ? { ...p, content } : p));
+    setHomeFeedPosts(updater);
+    setPublicUserPosts(updater);
+    setActiveCommentPost((prev) =>
+      prev && prev._id === postId ? { ...prev, content } : prev,
+    );
+    setActiveReactionsPost((prev) =>
+      prev && prev._id === postId ? { ...prev, content } : prev,
+    );
+  };
+
+  const performSavePostEdit = async (postId) => {
+    const textToSave = editingPostText;
+    const originalContent = editingPostOriginalContent;
+    const newContent = buildPostContentAfterEdit(originalContent, textToSave);
+
+    if (!isReceiptPostContent(originalContent) && !newContent) {
+      setToast({
+        title: "Error",
+        msg: "Post cannot be empty.",
+        type: "error",
+      });
+      return;
+    }
+
+    const textLen = isReceiptPostContent(originalContent)
+      ? textToSave.replace(/\s+/g, " ").trim().length
+      : newContent.length;
+
+    if (textLen > 300) {
+      setToast({
+        title: "Limit Exceeded",
+        msg: "Text cannot be longer than 300 characters.",
+        type: "error",
+      });
+      return;
+    }
+
+    setEditingPostId(null);
+    setEditingPostText("");
+    setEditingPostOriginalContent("");
+    updatePostContentInState(postId, newContent);
+
+    try {
+      const res = await fetch(
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ content: textToSave }),
+        },
+      );
+      const data = await res.json();
+      if (res.ok && data.content) {
+        updatePostContentInState(postId, data.content);
+        setToast({
+          title: "Updated",
+          msg: "Post updated successfully.",
+          type: "success",
+        });
+      } else {
+        fetchHomeFeed();
+        if (selectedPublicUser?.id) {
+          fetchPublicUserPosts(selectedPublicUser.id);
+        }
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      fetchHomeFeed();
+      setToast({
+        title: "Error",
+        msg: "Network error updating post.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleSavePostEdit = (postId) => {
+    const isReceipt = isReceiptPostContent(editingPostOriginalContent);
+    let cleanText = editingPostText.replace(/\s+/g, " ").trim();
+    cleanText = cleanText.replace(/<[^>]*>/g, "");
+
+    if (!isReceipt && !cleanText) {
+      setToast({
+        title: "Error",
+        msg: "Post cannot be empty.",
+        type: "error",
+      });
+      return;
+    }
+
+    openConfirmDialog({
+      title: "Save changes?",
+      message: "Do you want to save your changes to this post?",
+      confirmLabel: "Save",
+      cancelLabel: "Cancel",
+      onConfirm: () => performSavePostEdit(postId),
+    });
+  };
+
+  const requestStartPostEdit = (post) => {
+    const isReceipt = isReceiptPostContent(post.content);
+    openConfirmDialog({
+      title: "Edit post?",
+      message: isReceipt
+        ? "You can edit your message above the receipt. Invoice details cannot be changed."
+        : "Are you sure you want to edit this post?",
+      confirmLabel: "Edit",
+      cancelLabel: "Cancel",
+      onConfirm: () => {
+        setOpenPostMenuId(null);
+        setEditingPostId(post._id);
+        setEditingPostOriginalContent(post.content);
+        setEditingPostText(getPostEditableText(post.content));
+      },
+    });
+  };
+
+  const cancelPostEdit = () => {
+    setEditingPostId(null);
+    setEditingPostText("");
+    setEditingPostOriginalContent("");
+  };
+
+  const renderPostBody = (post) => {
+    if (editingPostId === post._id) {
+      const isReceipt = isReceiptPostContent(editingPostOriginalContent);
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {isReceipt && (
+            <p
+              style={{
+                color: "#94a3b8",
+                fontSize: "0.82rem",
+                margin: 0,
+                lineHeight: 1.4,
+              }}
+            >
+              Edit your caption above the receipt. Invoice details are locked.
+            </p>
+          )}
+          <textarea
+            className="form-input"
+            value={editingPostText}
+            onChange={(e) => setEditingPostText(e.target.value)}
+            maxLength={300}
+            placeholder={
+              isReceipt
+                ? "Write a caption above your receipt..."
+                : "Edit your post..."
+            }
+            rows={isReceipt ? 3 : 4}
+            style={{
+              width: "100%",
+              background: "rgba(0,0,0,0.2)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "12px",
+              padding: "12px 14px",
+              color: "#f8fafc",
+              fontSize: "0.95rem",
+              resize: "vertical",
+              minHeight: "80px",
+            }}
+          />
+          {isReceipt && (
+            <div
+              style={{
+                marginTop: "4px",
+                pointerEvents: "none",
+                opacity: 0.92,
+              }}
+            >
+              <p
+                style={{
+                  color: "#64748b",
+                  fontSize: "0.75rem",
+                  margin: "0 0 8px 0",
+                }}
+              >
+                Receipt preview (locked)
+              </p>
+              {renderPostContent(
+                buildPostContentAfterEdit(
+                  editingPostOriginalContent,
+                  editingPostText,
+                ),
+              )}
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              type="button"
+              onClick={cancelPostEdit}
+              style={{
+                background: "none",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#94a3b8",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSavePostEdit(post._id)}
+              style={{
+                background: "#6366f1",
+                border: "none",
+                color: "white",
+                borderRadius: "8px",
+                padding: "8px 14px",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        style={{
+          color: "#cbd5e1",
+          fontSize: "0.95rem",
+          lineHeight: "1.5",
+          margin: 0,
+        }}
+      >
+        {renderPostContent(post.content)}
+      </div>
+    );
+  };
+
   const renderPostMenu = (post) => {
     if (!isPostAuthor(post)) return null;
 
@@ -1883,6 +2167,23 @@ export default function Dashboard({ userData, onLogout }) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              type="button"
+              onClick={() => requestStartPostEdit(post)}
+              style={{
+                width: "100%",
+                background: "none",
+                border: "none",
+                color: "#e2e8f0",
+                padding: "10px 14px",
+                textAlign: "left",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 500,
+              }}
+            >
+              Edit post
+            </button>
             <button
               type="button"
               onClick={() => confirmDeletePost(post._id)}
@@ -2421,6 +2722,20 @@ export default function Dashboard({ userData, onLogout }) {
       );
       setActiveReactionsPost((prev) =>
         prev && prev._id === data.postId ? null : prev,
+      );
+    });
+
+    newSocket.on("post_updated", (data) => {
+      const { postId, content } = data;
+      const updater = (prev) =>
+        prev.map((p) => (p._id === postId ? { ...p, content } : p));
+      setHomeFeedPosts(updater);
+      setPublicUserPosts(updater);
+      setActiveCommentPost((prev) =>
+        prev && prev._id === postId ? { ...prev, content } : prev,
+      );
+      setActiveReactionsPost((prev) =>
+        prev && prev._id === postId ? { ...prev, content } : prev,
       );
     });
 
@@ -5403,16 +5718,7 @@ export default function Dashboard({ userData, onLogout }) {
                         {renderPostMenu(post)}
                       </div>
                     </div>
-                    <p
-                      style={{
-                        color: "#cbd5e1",
-                        fontSize: "0.95rem",
-                        lineHeight: "1.5",
-                        margin: 0,
-                      }}
-                    >
-                      {renderPostContent(post.content)}
-                    </p>
+                    {renderPostBody(post)}
                     {/* Reactions Count Summary */}
                     {post.reactions && post.reactions.length > 0 && (
                       <div
@@ -6086,16 +6392,7 @@ export default function Dashboard({ userData, onLogout }) {
                     {renderPostMenu(post)}
                   </div>
                 </div>
-                <p
-                  style={{
-                    color: "#cbd5e1",
-                    fontSize: "0.95rem",
-                    lineHeight: "1.5",
-                    margin: 0,
-                  }}
-                >
-                  {renderPostContent(post.content)}
-                </p>
+                {renderPostBody(post)}
                 {/* Reactions Count Summary */}
                 {post.reactions && post.reactions.length > 0 && (
                   <div
