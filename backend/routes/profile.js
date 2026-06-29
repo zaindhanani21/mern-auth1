@@ -361,7 +361,6 @@ async function buildSearchUserPayload(reqUser, foundProfile, myProfile) {
     id: foundProfile.userId,
     firstName: foundProfile.displayName,
     lastName: "",
-    username: foundProfile.username,
     profilePicture: foundProfile.profilePicture,
     status,
     requestId,
@@ -498,9 +497,8 @@ router.post("/friend-request/send", protect, async (req, res) => {
         requestId: newRequest._id,
         sender: {
           id: req.user._id,
-          firstName: myProfile.displayName, // Display name return karna
+          firstName: myProfile.displayName,
           lastName: "",
-          username: myProfile.username,
           profilePicture: myProfile.profilePicture,
         },
       });
@@ -573,9 +571,8 @@ router.post("/friend-request/accept", protect, async (req, res) => {
       req.io.to(request.sender.toString()).emit("friend_request_accepted", {
         friend: {
           id: recipientProfile.userId,
-          firstName: recipientProfile.displayName, // Display name return karna
+          firstName: recipientProfile.displayName,
           lastName: "",
-          username: recipientProfile.username,
           profilePicture: recipientProfile.profilePicture,
         },
       });
@@ -650,9 +647,8 @@ router.get("/friend-requests", protect, async (req, res) => {
           _id: request._id,
           sender: {
             id: request.sender,
-            firstName: senderProfile.displayName, // displayName return karna taake real name hide ho
+            firstName: senderProfile.displayName,
             lastName: "",
-            username: senderProfile.username,
             profilePicture: senderProfile.profilePicture,
           },
           recipient: request.recipient,
@@ -689,9 +685,8 @@ router.get("/friends", protect, async (req, res) => {
         populatedFriends.push({
           _id: friendId,
           id: friendId,
-          firstName: friendProfile.displayName, // Display name
+          firstName: friendProfile.displayName,
           lastName: "",
-          username: friendProfile.username,
           profilePicture: friendProfile.profilePicture,
         });
       }
@@ -871,7 +866,6 @@ router.get("/posts/feed", protect, async (req, res) => {
                 ? commenterProfile.displayName
                 : "User",
               lastName: "",
-              username: commenterProfile ? commenterProfile.username : "user",
               profilePicture: commenterProfile
                 ? commenterProfile.profilePicture
                 : null,
@@ -889,7 +883,6 @@ router.get("/posts/feed", protect, async (req, res) => {
             id: post.author,
             firstName: authorProfile.displayName,
             lastName: "",
-            username: authorProfile.username,
             profilePicture: authorProfile.profilePicture,
           },
           comments: populatedComments, // 🟢 Populate comments
@@ -903,7 +896,6 @@ router.get("/posts/feed", protect, async (req, res) => {
             return {
               user: reaction.user,
               type: reaction.type,
-              username: reactorProfile ? reactorProfile.username : "user",
               displayName: reactorProfile ? reactorProfile.displayName : "User",
               profilePicture: reactorProfile
                 ? reactorProfile.profilePicture
@@ -1018,7 +1010,6 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
             id: comment.author,
             firstName: commenterProfile ? commenterProfile.displayName : "User",
             lastName: "",
-            username: commenterProfile ? commenterProfile.username : "user",
             profilePicture: commenterProfile
               ? commenterProfile.profilePicture
               : null,
@@ -1036,7 +1027,6 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
           id: post.author,
           firstName: targetProfileFromMap.displayName,
           lastName: "",
-          username: targetProfileFromMap.username,
           profilePicture: targetProfileFromMap.profilePicture,
         },
         comments: populatedComments, // 🟢 Populate comments
@@ -1050,7 +1040,6 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
           return {
             user: reaction.user,
             type: reaction.type,
-            username: reactorProfile ? reactorProfile.username : "user",
             displayName: reactorProfile ? reactorProfile.displayName : "User",
             profilePicture: reactorProfile
               ? reactorProfile.profilePicture
@@ -1191,7 +1180,6 @@ router.post("/posts/:postId/comment", protect, async (req, res) => {
           ? commenterProfile.displayName
           : req.user.firstName,
         lastName: "",
-        username: commenterProfile ? commenterProfile.username : "user",
         profilePicture: commenterProfile
           ? commenterProfile.profilePicture
           : req.user.profilePicture,
@@ -1298,7 +1286,6 @@ router.get("/posts/:postId", protect, async (req, res) => {
           id: comment.author,
           firstName: commenterProfile ? commenterProfile.displayName : "User",
           lastName: "",
-          username: commenterProfile ? commenterProfile.username : "user",
           profilePicture: commenterProfile
             ? commenterProfile.profilePicture
             : null,
@@ -1316,7 +1303,6 @@ router.get("/posts/:postId", protect, async (req, res) => {
         id: post.author,
         firstName: authorProfile.displayName,
         lastName: "",
-        username: authorProfile.username,
         profilePicture: authorProfile.profilePicture,
       },
       comments: populatedComments,
@@ -1330,7 +1316,6 @@ router.get("/posts/:postId", protect, async (req, res) => {
         return {
           user: reaction.user,
           type: reaction.type,
-          username: reactorProfile ? reactorProfile.username : "user",
           displayName: reactorProfile ? reactorProfile.displayName : "User",
           profilePicture: reactorProfile ? reactorProfile.profilePicture : null,
         };
@@ -1469,7 +1454,6 @@ router.post("/posts/:postId/react", protect, async (req, res) => {
       return {
         user: r.user,
         type: r.type,
-        username: prof ? prof.username : "user",
         displayName: prof ? prof.displayName : "User",
         profilePicture: prof ? prof.profilePicture : null,
       };
@@ -1572,7 +1556,6 @@ router.get("/chat/conversations", protect, async (req, res) => {
           friendId,
           firstName: sp?.isActive === false ? "Account Deactivated" : friendUser.firstName,
           lastName: sp?.isActive === false ? "" : friendUser.lastName,
-          username: sp?.isActive === false ? null : (sp?.username || null),
           profilePicture: sp?.isActive === false ? null : (sp?.profilePicture || null),
           lastMessage: msg.content,
           lastMessageAt: msg.createdAt,

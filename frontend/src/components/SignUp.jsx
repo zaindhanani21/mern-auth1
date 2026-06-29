@@ -175,7 +175,7 @@ export default function SignUp({ onSwitchToSignin, onSignupSuccess }) {
 
                 <div className="flex-row">
                   <button type="button" className="secondary-button" onClick={prevStep}>Back</button>
-                  <button type="button" className="primary-button" onClick={nextStep}>Next: Security â†’</button>
+                  <button type="button" className="primary-button" onClick={nextStep}>Next: Security’</button>
                 </div>
               </motion.div>
             )}
