@@ -165,7 +165,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     <div className="signin-container">
       <div className="signin-card">
         <h1 className="title">Welcome Back</h1>
-        <p className="subtitle">Secure â€¢ Fast â€¢ Smart</p>
+        <p className="subtitle">Secure Fast Smart</p>
 
         {!showForgotPassword ? (
           <form onSubmit={handleSignin}>
@@ -191,9 +191,9 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
         ) : resetStep === 1 ? (
           <form onSubmit={handleForgot}>
             <h3 className="section-title">Reset Password</h3>
-            <p style={{ fontSize: '0.82rem', color: '#8b6474', marginBottom: '15px' }}>Step 1 of 2 â€” Verify your identity</p>
+            <p style={{ fontSize: '0.82rem', color: '#8b6474', marginBottom: '15px' }}>Step 1 of 2 Verify your identity</p>
             <p style={{ fontSize: '0.8rem', color: '#942127', marginBottom: '10px', background: 'rgba(255,255,255,0.05)', padding: '8px 12px', borderRadius: '8px' }}>
-              ðŸ”’ If your credentials match our records, an OTP will be sent to your email.
+               If your credentials match our records, an OTP will be sent to your email.
             </p>
 
             <div className="input-group">
@@ -229,7 +229,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
         ) : (
           <form onSubmit={handleResetPassword}>
             <h3 className="section-title">Set New Password</h3>
-            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '15px' }}>Step 2 of 2 â€” Enter OTP and new password</p>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '15px' }}>Step 2 of 2 Enter OTP and new password</p>
 
             {/* OTP Field */}
             <div className="input-group">

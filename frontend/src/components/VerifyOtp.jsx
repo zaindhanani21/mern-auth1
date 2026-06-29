@@ -145,7 +145,7 @@ export default function VerifyOtp({
               width: "100%",
             }}
             type="text"
-            placeholder="â€¢â€¢â€¢â€¢â€¢â€¢"
+            placeholder="••••••"
             value={otpCode}
             onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
             maxLength="6"
