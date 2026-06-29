@@ -2425,6 +2425,11 @@ export default function Dashboard({ userData, onLogout }) {
     };
   }, [openCommentMenuId, openPostMenuId]);
 
+  const closeNotificationPanels = () => {
+    setShowFriendsDropdown(false);
+    setShowNotifDropdown(false);
+  };
+
   //   Handle Social notification click (Opens post comments instantly)
   const handleSocialNotificationClick = async (notif) => {
     // Mark as read natively
@@ -9447,16 +9452,17 @@ export default function Dashboard({ userData, onLogout }) {
             )}
             {/* ?? FRIEND REQUESTS DROPDOWN BUTTON (Only visible on Social Feed tab) */}
             {activeTab === "social" && (
-              <div style={{ position: "relative" }}>
+              <div className="notif-menu-wrap" data-notif-trigger>
                 <button
                   className="notif-btn"
-                  onClick={() => {
-                    const nextVal = !showFriendsDropdown;
-                    setShowFriendsDropdown(nextVal);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFriendsDropdown((prev) => {
+                      const next = !prev;
+                      if (next) markAsRead("social");
+                      return next;
+                    });
                     setShowNotifDropdown(false);
-                    if (nextVal) {
-                      markAsRead("social");
-                    }
                   }}
                 >
                   <Heart size={24} />{" "}
@@ -9485,6 +9491,8 @@ export default function Dashboard({ userData, onLogout }) {
                 {showFriendsDropdown && (
                   <div
                     className="notif-dropdown"
+                    data-notif-panel
+                    onClick={(e) => e.stopPropagation()}
                     style={{
                       right: 0,
                       background: "#1e293b",
@@ -9510,6 +9518,14 @@ export default function Dashboard({ userData, onLogout }) {
                       >
                         Social Activity
                       </h3>
+                      <button
+                        type="button"
+                        className="close-btn"
+                        onClick={closeNotificationPanels}
+                        aria-label="Close notifications"
+                      >
+                        {"\u00D7"}
+                      </button>
                     </div>
                     <div style={{ maxHeight: "350px", overflowY: "auto" }}>
                       {/* Friend Requests � inline accept/reject */}
@@ -9620,11 +9636,12 @@ export default function Dashboard({ userData, onLogout }) {
 
             {/* ?? BELL NOTIFICATIONS BUTTON (Visible on all tabs EXCEPT Social Feed) */}
             {activeTab !== "social" && (
-              <div style={{ position: "relative" }}>
+              <div className="notif-menu-wrap" data-notif-trigger>
                 <button
                   className="notif-btn"
-                  onClick={() => {
-                    setShowNotifDropdown(!showNotifDropdown);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowNotifDropdown((prev) => !prev);
                     setShowFriendsDropdown(false);
                   }}
                 >
@@ -9636,7 +9653,11 @@ export default function Dashboard({ userData, onLogout }) {
 
                 {/* NOTIFICATION DROPDOWN */}
                 {showNotifDropdown && (
-                  <div className="notif-dropdown">
+                  <div
+                    className="notif-dropdown"
+                    data-notif-panel
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div
                       style={{
                         display: "flex",
@@ -9655,6 +9676,7 @@ export default function Dashboard({ userData, onLogout }) {
                       >
                         Notifications
                       </h3>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {unreadCount > 0 && (
                         <button
                           onClick={markAllAsRead}
@@ -9669,6 +9691,15 @@ export default function Dashboard({ userData, onLogout }) {
                           Mark all read
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="close-btn"
+                        onClick={closeNotificationPanels}
+                        aria-label="Close notifications"
+                      >
+                        {"\u00D7"}
+                      </button>
+                      </div>
                     </div>
                     <div style={{ maxHeight: "400px", overflowY: "auto" }}>
                       {notifications.length === 0 ? (
@@ -9764,6 +9795,14 @@ export default function Dashboard({ userData, onLogout }) {
             )}
           </div>
         </header>
+
+        {(showFriendsDropdown || showNotifDropdown) && (
+          <div
+            className="notif-backdrop"
+            onClick={closeNotificationPanels}
+            aria-hidden="true"
+          />
+        )}
 
         {activeTab === "home" && renderHome()}
         {activeTab === "send" && renderSend()}
