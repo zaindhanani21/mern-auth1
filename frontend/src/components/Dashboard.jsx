@@ -651,7 +651,6 @@ export default function Dashboard({ userData, onLogout }) {
   const [chatSending, setChatSending] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
-  const [onlineFriendIds, setOnlineFriendIds] = useState(new Set());
   // Messages screen search (friends only)
   const [msgSearchQuery, setMsgSearchQuery] = useState("");
   const [msgSearchResults, setMsgSearchResults] = useState([]);
@@ -2859,14 +2858,6 @@ export default function Dashboard({ userData, onLogout }) {
 
 
     newSocket.on("messages_read", () => fetchConversations());
-
-    // Online presence
-    newSocket.on("friend_online", ({ userId: fid }) => {
-      setOnlineFriendIds((prev) => new Set([...prev, fid]));
-    });
-    newSocket.on("friend_offline", ({ userId: fid }) => {
-      setOnlineFriendIds((prev) => { const next = new Set(prev); next.delete(fid); return next; });
-    });
   }, [
     userId,
     fetchData,
@@ -6004,32 +5995,6 @@ export default function Dashboard({ userData, onLogout }) {
     // 4. MAIN SOCIAL FEED: Default view containing Search, Post Box, Friends & Feed Timeline
     return (
       <div className="view-container">
-        {/* Online Friends Panel */}
-        {friendsList.filter((f) => onlineFriendIds.has(f._id)).length > 0 && (
-          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "16px", padding: "16px 18px", marginBottom: "18px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-              <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0, boxShadow: "0 0 8px #22c55e" }}></span>
-              <span style={{ color: "#f8fafc", fontWeight: 700, fontSize: "0.95rem" }}>Online Now</span>
-              <span style={{ background: "#22c55e22", color: "#22c55e", fontSize: "0.78rem", fontWeight: 600, padding: "2px 8px", borderRadius: "20px", border: "1px solid #22c55e44" }}>{friendsList.filter((f) => onlineFriendIds.has(f._id)).length}</span>
-            </div>
-            <div style={{ display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "4px" }}>
-              {friendsList.filter((f) => onlineFriendIds.has(f._id)).map((friend) => (
-                <div key={friend._id} onClick={() => openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture })}>
-                  <div style={{ position: "relative" }}>
-                    <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "1.1rem", overflow: "hidden", border: "2px solid #22c55e", boxShadow: "0 0 0 2px #0f172a" }}>
-                      {friend.profilePicture ? <img src={friend.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : friend.firstName?.[0]?.toUpperCase()}
-                    </div>
-                    <span style={{ position: "absolute", bottom: "0", right: "0", width: "12px", height: "12px", borderRadius: "50%", background: "#22c55e", border: "2px solid #1e293b" }}></span>
-                  </div>
-                  <span style={{ color: "#e2e8f0", fontSize: "0.75rem", fontWeight: 500, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60px" }}>{friend.firstName}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-
-
         {/* ?? Search Bar Section */}
         <div style={{ marginBottom: "20px" }}>
           <form

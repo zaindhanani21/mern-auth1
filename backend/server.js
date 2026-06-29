@@ -7,7 +7,6 @@ import { Server } from "socket.io";
 import User from "./models/User.js";
 import UbpsBill from "./models/UbpsBill.js";
 import OneLinkBank from "./models/OneLinkBank.js";
-import SocialProfile from "./models/SocialProfile.js";
 
 import authRoutes from "./auth.js";
 import walletRoutes from "./routes/wallet.js"; // 🟢 New Wallet/Transaction Routes
@@ -323,15 +322,6 @@ io.on("connection", (socket) => {
             socket.join(userId);
             socketUserMap.set(socket.id, userId);
             console.log(`👤 User ${userId} joined their notification room.`);
-            // Notify friends this user is online
-            try {
-                const sp = await SocialProfile.findOne({ userId }).select("friends");
-                if (sp && sp.friends.length > 0) {
-                    sp.friends.forEach((friendId) => {
-                        io.to(friendId.toString()).emit("friend_online", { userId });
-                    });
-                }
-            } catch (e) { console.error("Online notify error:", e.message); }
         }
     });
 
@@ -339,17 +329,6 @@ io.on("connection", (socket) => {
         const userId = socketUserMap.get(socket.id);
         socketUserMap.delete(socket.id);
         console.log(`🔌 Client Disconnected${userId ? ` (User: ${userId})` : ""}`);
-        if (userId) {
-            // Notify friends this user went offline
-            try {
-                const sp = await SocialProfile.findOne({ userId }).select("friends");
-                if (sp && sp.friends.length > 0) {
-                    sp.friends.forEach((friendId) => {
-                        io.to(friendId.toString()).emit("friend_offline", { userId });
-                    });
-                }
-            } catch (e) { console.error("Offline notify error:", e.message); }
-        }
     });
 });
 
