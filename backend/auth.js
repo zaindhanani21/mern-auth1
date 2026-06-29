@@ -5,7 +5,7 @@ import PendingUser from "./models/PendingUser.js"; // 🟢 NEW
 import mongoose from "mongoose";
 import { sendInactivityLogoutEmail } from "./mailHelper.js";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { sendEmail } from "./emailService.js";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 
@@ -64,13 +64,7 @@ export const protect = async (req, res, next) => {
   next();
 };
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+
 
 // --- UPDATED AUTH ROUTES ---
 
@@ -113,8 +107,8 @@ router.post("/signup", async (req, res) => {
 
     // Send Email
     try {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+      await sendEmail({
+        
         to: email,
         subject: "Wallexa Verification Code",
         text: `Your verification code is ${otp}. It expires in 10 minutes.`,
@@ -260,8 +254,8 @@ router.post("/signin", async (req, res) => {
     await user.save();
 
     try {
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+      await sendEmail({
+        
         to: user.email,
         subject: "Login OTP",
         text: `Your Login OTP is ${otp}. It expires in 10 minutes.`,
@@ -333,8 +327,8 @@ router.post("/forgot-password", async (req, res) => {
     user.otpExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: user.email,
       subject: "Password Reset - Wallexa",
       text: `Your reset OTP is ${otp}`,
@@ -371,8 +365,8 @@ router.post("/reset-password", async (req, res) => {
     user.otpExpires = null;
     await user.save();
 
-    transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: user.email,
       subject: "Password Reset Successful - Wallexa",
       text: `Hi ${user.firstName},\n\nYour Wallexa account password has been successfully reset.\n\nIf you did not make this change, please contact support immediately.\n\nWallexa Security Team`,
@@ -392,8 +386,8 @@ router.post("/send-freeze-otp", protect, async (req, res) => {
     req.user.otpExpires = Date.now() + 10 * 60 * 1000; // 🟢 Validity extended to 10 minutes
     await req.user.save();
 
-    transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: req.user.email,
       subject: "Security Alert: Wallet Status Change",
       text: `OTP to freeze/unfreeze wallet: ${otp}. It expires in 10 minutes.`,

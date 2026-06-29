@@ -2,7 +2,7 @@
 import Stripe from "stripe";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../emailService.js";
 import crypto from "crypto";
 import { protect } from "../auth.js";
 import Wallet from "../models/Wallet.js";
@@ -1838,18 +1838,9 @@ router.post("/change-pin/verify-current", protect, async (req, res) => {
 
     // Send OTP Email
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+      await sendEmail({
         to: req.user.email,
-        subject: "ðŸ”’ Transaction PIN Change OTP - Wallexa",
+        subject: "Transaction PIN Change OTP - Wallexa",
         html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                         <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
@@ -1924,18 +1915,9 @@ router.post("/forgot-pin/verify-password", protect, async (req, res) => {
 
     // Send OTP via email using self-contained transporter
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
-
-      await transporter.sendMail({
-        from: process.env.EMAIL_USER,
+      await sendEmail({
         to: user.email,
-        subject: "ðŸ”’ Transaction PIN Reset OTP - Wallexa",
+        subject: "Transaction PIN Reset OTP - Wallexa",
         html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                         <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">

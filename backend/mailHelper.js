@@ -1,15 +1,7 @@
-import nodemailer from "nodemailer";
 import dotenv from "dotenv";
+import { sendEmail } from "./emailService.js";
 
 dotenv.config();
-
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 /**
  * Send Money Received Email
@@ -20,8 +12,8 @@ export const sendMoneyReceivedEmail = async (
   amount,
 ) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: recipientEmail,
       subject: "💰 Money Received - Wallexa",
       html: `
@@ -88,8 +80,8 @@ export const sendMoneySentEmail = async (
   amount,
 ) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: senderEmail,
       subject: "📤 Money Sent - Wallexa",
       html: `
@@ -152,8 +144,8 @@ export const sendMoneySentEmail = async (
  */
 export const sendFundsAddedEmail = async (userEmail, amount) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: userEmail,
       subject: "💳 Funds Added - Wallexa",
       html: `
@@ -212,8 +204,8 @@ export const sendFundsAddedEmail = async (userEmail, amount) => {
  */
 export const sendSecurityAlertEmail = async (userEmail, reason) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: userEmail,
       subject: "🚨 Security Alert: Wallet Frozen - Wallexa",
       html: `
@@ -256,8 +248,8 @@ export const sendSecurityAlertEmail = async (userEmail, reason) => {
  */
 export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: userEmail,
       subject: "🔒 Transaction Verification OTP - Wallexa",
       html: `
@@ -304,8 +296,8 @@ export const sendSecurityOtpEmail = async (userEmail, amount, otp) => {
  */
 export const sendInactivityLogoutEmail = async (userEmail, userName) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: userEmail,
       subject: "🔒 Security Alert: Session Expired - Wallexa",
       html: `
@@ -354,8 +346,8 @@ export const sendInactivityLogoutEmail = async (userEmail, userName) => {
  */
 export const sendPinChangedEmail = async (userEmail, userName) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: userEmail,
       subject: "🔒 Security Confirmation: Transaction PIN Changed - Wallexa",
       html: `
@@ -404,8 +396,8 @@ export const sendSplitRequestEmail = async (
   description
 ) => {
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    await sendEmail({
+      
       to: recipientEmail,
       subject: "🧾 Split Bill Request - Wallexa",
       html: `

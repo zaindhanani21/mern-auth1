@@ -7,6 +7,7 @@ import Post from "../models/Post.js";
 import SocialProfile from "../models/SocialProfile.js";
 import Notification from "../models/Notification.js";
 import Message from "../models/Message.js";
+import { sendEmail } from "../emailService.js";
 
 const router = express.Router();
 
@@ -1509,9 +1510,8 @@ router.post("/change-password", protect, async (req, res) => {
     await user.save();
 
     try {
-      const sendEmail = require("../utils/sendEmail");
       await sendEmail({
-        email: user.email,
+        to: user.email,
         subject: "Password Changed Successfully - Wallexa",
         text: `Hi ${user.firstName},\n\nYour Wallexa account password has been successfully changed from your profile.\n\nIf you did not make this change, please contact support immediately.\n\nWallexa Security Team`,
       });
