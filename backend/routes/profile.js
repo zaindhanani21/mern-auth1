@@ -70,8 +70,9 @@ router.get("/", protect, async (req, res) => {
       cnicFull: cnicDecrypted,
       profilePicture: user.profilePicture,
       isEmailVerified: user.isEmailVerified,
-      username: socialProfile ? socialProfile.username : null, // 🟢 SocialProfile se lena
-      displayName: socialProfile ? socialProfile.displayName : null, // 🟢 Custom name
+      username: socialProfile ? socialProfile.username : null,
+      displayName: socialProfile ? socialProfile.displayName : null,
+      socialActive: socialProfile ? socialProfile.isActive !== false : false,
       isMobileVerified: user.isMobileVerified,
       createdAt: user.createdAt,
     });
@@ -259,27 +260,20 @@ router.post("/set-username", protect, async (req, res) => {
   }
 });
 
-// 🟢 ROUTE C: POST /api/profile/deactivate-social - Reset username to null & delete all social data (posts, friends, requests)
+// ROUTE C: POST /api/profile/deactivate-social - Pause social account (reversible)
 router.post("/deactivate-social", protect, async (req, res) => {
   try {
-    // 1. Delete all posts created by this user
-    await Post.deleteMany({ author: req.user._id });
+    const sp = await SocialProfile.findOne({ userId: req.user._id });
+    if (!sp) {
+      return res.status(404).json({ message: "Social profile not found!" });
+    }
+    if (sp.isActive === false) {
+      return res.status(400).json({ message: "Account is already deactivated." });
+    }
 
-    // 2. Remove this user from all their friends' lists in SocialProfile
-    await SocialProfile.updateMany(
-      { friends: req.user._id },
-      { $pull: { friends: req.user._id } },
-    );
+    sp.isActive = false;
+    await sp.save();
 
-    // 3. Delete all pending friend requests (sent or received)
-    await FriendRequest.deleteMany({
-      $or: [{ sender: req.user._id }, { recipient: req.user._id }],
-    });
-
-    // 4. Delete the SocialProfile document completely
-    await SocialProfile.findOneAndDelete({ userId: req.user._id });
-
-    // 🌟 Socket.io real-time update broadcast karna taake baqi users ka feed clear ho jaye (Naya Code)
     if (req.io) {
       req.io.emit("social_deactivated", {
         userId: req.user._id.toString(),
@@ -287,91 +281,151 @@ router.post("/deactivate-social", protect, async (req, res) => {
     }
 
     res.json({
-      message: "Social profile deactivated and all data deleted successfully",
+      message: "Social profile deactivated successfully.",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// 🟢 ROUTE D: GET /api/profile/search - Search for users by username & get friendship status (Allows self-search)
-router.get("/search", protect, async (req, res) => {
+// ROUTE C2: POST /api/profile/activate-social - Reactivate paused account
+router.post("/activate-social", protect, async (req, res) => {
   try {
-    const { username } = req.query;
-    if (!username) {
-      return res
-        .status(400)
-        .json({ message: "Username parameter is required!" });
+    const sp = await SocialProfile.findOne({ userId: req.user._id });
+    if (!sp) {
+      return res.status(404).json({ message: "Social profile not found!" });
+    }
+    if (sp.isActive !== false) {
+      return res.status(400).json({ message: "Account is already active." });
     }
 
-    const cleanUsername = username.trim().toLowerCase();
+    sp.isActive = true;
+    await sp.save();
 
-    // SocialProfile mein user ko dhoondna
-    const foundProfile = await SocialProfile.findOne({
-      username: cleanUsername,
-    }).select("userId username displayName profilePicture friends");
-    if (!foundProfile) {
-      return res.status(404).json({ message: "User not found!" });
-    }
-
-    // Current logged in user ka SocialProfile fetch karna taake friends list check ho sake
-    const myProfile = await SocialProfile.findOne({ userId: req.user._id });
-
-    // Relationship status check karna
-    let status = "NONE";
-    let requestId = null;
-
-    if (req.user._id.toString() === foundProfile.userId.toString()) {
-      status = "SELF";
-    } else {
-      const isAlreadyFriends =
-        myProfile &&
-        myProfile.friends.some((friendId) =>
-          friendId.equals(foundProfile.userId),
-        );
-      if (isAlreadyFriends) {
-        status = "FRIENDS";
-        // Agr dono users ke dosti records missing hain to verify check
-      } else {
-        // Check if current user sent request
-        const sentRequest = await FriendRequest.findOne({
-          sender: req.user._id,
-          recipient: foundProfile.userId,
-          status: "PENDING",
-        });
-
-        if (sentRequest) {
-          status = "SENT";
-          requestId = sentRequest._id;
-        } else {
-          // Check if current user received request from them
-          const receivedRequest = await FriendRequest.findOne({
-            sender: foundProfile.userId,
-            recipient: req.user._id,
-            status: "PENDING",
-          });
-
-          if (receivedRequest) {
-            status = "RECEIVED";
-            requestId = receivedRequest._id;
-          }
-        }
-      }
+    if (req.io) {
+      req.io.emit("social_activated", {
+        userId: req.user._id.toString(),
+      });
     }
 
     res.json({
-      id: foundProfile.userId, // frontend ki compatibiltiy ke liye
-      firstName: foundProfile.displayName, // frontend ko user ka display name bejhna firstName ki jagah
-      lastName: "", // lastName khali rakhna privacy ke liye
-      username: foundProfile.username,
-      profilePicture: foundProfile.profilePicture,
-      status,
-      requestId,
+      message: "Social profile activated successfully.",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
+
+// Helper: friendship status for search results
+async function buildSearchUserPayload(reqUser, foundProfile, myProfile) {
+  let status = "NONE";
+  let requestId = null;
+  const targetUserId = foundProfile.userId;
+
+  if (reqUser._id.toString() === targetUserId.toString()) {
+    status = "SELF";
+  } else {
+    const isAlreadyFriends =
+      myProfile &&
+      myProfile.friends.some((friendId) => friendId.equals(targetUserId));
+
+    if (isAlreadyFriends) {
+      status = "FRIENDS";
+    } else {
+      const sentRequest = await FriendRequest.findOne({
+        sender: reqUser._id,
+        recipient: targetUserId,
+        status: "PENDING",
+      });
+
+      if (sentRequest) {
+        status = "SENT";
+        requestId = sentRequest._id;
+      } else {
+        const receivedRequest = await FriendRequest.findOne({
+          sender: targetUserId,
+          recipient: reqUser._id,
+          status: "PENDING",
+        });
+
+        if (receivedRequest) {
+          status = "RECEIVED";
+          requestId = receivedRequest._id;
+        }
+      }
+    }
+  }
+
+  return {
+    id: foundProfile.userId,
+    firstName: foundProfile.displayName,
+    lastName: "",
+    username: foundProfile.username,
+    profilePicture: foundProfile.profilePicture,
+    status,
+    requestId,
+  };
+}
+
+// 🟢 ROUTE D: GET /api/profile/search - Name (partial) + Username (exact)
+router.get("/search", protect, async (req, res) => {
+  try {
+    const q = (req.query.q || req.query.username || "").trim();
+    if (!q) {
+      return res.status(400).json({ message: "Search query is required!" });
+    }
+
+    const lowerQ = q.toLowerCase();
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const selectFields = "userId username displayName profilePicture friends";
+    const profileMap = new Map();
+
+    // 1) Exact username match (unique — ek hi banda)
+    const exactUsernameMatch = await SocialProfile.findOne({
+      username: lowerQ,
+      isActive: { $ne: false },
+    }).select(selectFields);
+
+    if (exactUsernameMatch) {
+      profileMap.set(exactUsernameMatch.userId.toString(), exactUsernameMatch);
+    }
+
+        const nameMatches = await SocialProfile.find({
+      displayName: { $regex: escaped, $options: "i" },
+      isActive: { $ne: false },
+    })
+      .select(selectFields)
+      .limit(25);
+    for (const profile of nameMatches) {
+      profileMap.set(profile.userId.toString(), profile);
+    }
+
+    if (profileMap.size === 0) {
+      return res.status(404).json({ message: "No users found!" });
+    }
+
+    const myProfile = await SocialProfile.findOne({ userId: req.user._id });
+    const results = [];
+
+    for (const foundProfile of profileMap.values()) {
+      results.push(
+        await buildSearchUserPayload(req.user, foundProfile, myProfile)
+      );
+    }
+
+    // Exact username wala sabse upar
+    results.sort((a, b) => {
+      if (a.username === lowerQ) return -1;
+      if (b.username === lowerQ) return 1;
+      return (a.firstName || "").localeCompare(b.firstName || "");
+    });
+
+    res.json({ results, count: results.length });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 
 // 🟢 ROUTE E: POST /api/profile/friend-request/send - Send a friend request
 router.post("/friend-request/send", protect, async (req, res) => {
@@ -387,13 +441,16 @@ router.post("/friend-request/send", protect, async (req, res) => {
         .json({ message: "You cannot send a friend request to yourself!" });
     }
 
-    const recipientProfile = await SocialProfile.findOne({
+       const recipientProfile = await SocialProfile.findOne({
       userId: recipientId,
     });
     if (!recipientProfile) {
       return res
         .status(404)
         .json({ message: "Recipient social profile not found!" });
+    }
+    if (recipientProfile.isActive === false) {
+      return res.status(400).json({ message: "This account is deactivated." });
     }
 
     const myProfile = await SocialProfile.findOne({ userId: req.user._id });
@@ -402,7 +459,9 @@ router.post("/friend-request/send", protect, async (req, res) => {
         .status(400)
         .json({ message: "Activate your social profile first!" });
     }
-
+    if (myProfile.isActive === false) {
+      return res.status(403).json({ message: "Activate your social account first." });
+    }
     if (myProfile.friends.some((friendId) => friendId.equals(recipientId))) {
       return res
         .status(400)
@@ -584,8 +643,8 @@ router.get("/friend-requests", protect, async (req, res) => {
     for (const request of requests) {
       const senderProfile = await SocialProfile.findOne({
         userId: request.sender,
-      }).select("username displayName profilePicture");
-      if (senderProfile) {
+      }).select("username displayName profilePicture isActive");
+      if (senderProfile && senderProfile.isActive !== false) {
         populatedRequests.push({
           _id: request._id,
           sender: {
@@ -615,14 +674,17 @@ router.get("/friends", protect, async (req, res) => {
     if (!myProfile) {
       return res.json([]);
     }
+        if (myProfile.isActive === false) {
+      return res.status(403).json({ message: "Activate your social account first." });
+    }
 
     // Friends ki social profile details fetch karna
     const populatedFriends = [];
     for (const friendId of myProfile.friends) {
       const friendProfile = await SocialProfile.findOne({
         userId: friendId,
-      }).select("username displayName profilePicture");
-      if (friendProfile) {
+      }).select("username displayName profilePicture isActive");
+      if (friendProfile && friendProfile.isActive !== false) {
         populatedFriends.push({
           _id: friendId,
           id: friendId,
@@ -700,6 +762,10 @@ router.post("/posts", protect, async (req, res) => {
       ? visibility
       : "public";
 
+          const myProfileForPost = await SocialProfile.findOne({ userId: req.user._id });
+    if (!myProfileForPost || myProfileForPost.isActive === false) {
+      return res.status(403).json({ message: "Activate your social account to post." });
+    }
     const newPost = new Post({
       author: req.user._id,
       content: cleanContent,
@@ -771,10 +837,9 @@ router.get("/posts/feed", protect, async (req, res) => {
     const authorIds = [...authorIdsSet];
 
     // 2. Sirf 1 query mein saare profiles fetch karna
-    const authorProfiles = await SocialProfile.find({
+        const authorProfiles = await SocialProfile.find({
       userId: { $in: authorIds },
-    }).select("userId username displayName profilePicture");
-
+    }).select("userId username displayName profilePicture isActive");
     // 3. Map banana
     const profileMap = {};
     authorProfiles.forEach((p) => {
@@ -785,9 +850,14 @@ router.get("/posts/feed", protect, async (req, res) => {
     const populatedPosts = [];
     for (const post of posts) {
       const authorProfile = profileMap[post.author.toString()];
-      if (authorProfile) {
+      if (authorProfile && authorProfile.isActive !== false) {
         // Populate comments
-        const populatedComments = (post.comments || []).map((comment) => {
+        const populatedComments = (post.comments || [])
+          .filter((comment) => {
+            const cp = profileMap[comment.author.toString()];
+            return cp && cp.isActive !== false;
+          })
+          .map((comment) => {
           const commenterProfile = profileMap[comment.author.toString()];
           return {
             _id: comment._id,
@@ -822,7 +892,12 @@ router.get("/posts/feed", protect, async (req, res) => {
             profilePicture: authorProfile.profilePicture,
           },
           comments: populatedComments, // 🟢 Populate comments
-          reactions: (post.reactions || []).map((reaction) => {
+          reactions: (post.reactions || [])
+            .filter((reaction) => {
+              const rp = profileMap[reaction.user.toString()];
+              return rp && rp.isActive !== false;
+            })
+            .map((reaction) => {
             const reactorProfile = profileMap[reaction.user.toString()];
             return {
               user: reaction.user,
@@ -868,6 +943,13 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
           .json({ message: "User social profile not found!" });
       }
 
+      if (targetProfile.isActive === false) {
+        return res.status(403).json({
+          message: "This account has been deactivated.",
+          deactivated: true,
+        });
+      }
+
       const isFriend = targetProfile.friends.some((friendId) =>
         friendId.equals(req.user._id),
       );
@@ -904,7 +986,7 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
 
     const authorProfiles = await SocialProfile.find({
       userId: { $in: authorIds },
-    }).select("userId username displayName profilePicture");
+    }).select("userId username displayName profilePicture isActive");
 
     const profileMap = {};
     authorProfiles.forEach((p) => {
@@ -919,7 +1001,12 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
     }
 
     const populatedPosts = posts.map((post) => {
-      const populatedComments = (post.comments || []).map((comment) => {
+      const populatedComments = (post.comments || [])
+      .filter((comment) => {
+        const cp = profileMap[comment.author.toString()];
+        return cp && cp.isActive !== false;
+      })
+      .map((comment) => {
         const commenterProfile = profileMap[comment.author.toString()];
         return {
           _id: comment._id,
@@ -952,7 +1039,12 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
           profilePicture: targetProfileFromMap.profilePicture,
         },
         comments: populatedComments, // 🟢 Populate comments
-        reactions: (post.reactions || []).map((reaction) => {
+        reactions: (post.reactions || [])
+          .filter((reaction) => {
+            const rp = profileMap[reaction.user.toString()];
+            return rp && rp.isActive !== false;
+          })
+          .map((reaction) => {
           const reactorProfile = profileMap[reaction.user.toString()];
           return {
             user: reaction.user,
@@ -1176,7 +1268,7 @@ router.get("/posts/:postId", protect, async (req, res) => {
 
     const authorProfiles = await SocialProfile.find({
       userId: { $in: authorIds },
-    }).select("userId username displayName profilePicture");
+    }).select("userId username displayName profilePicture isActive");
     const profileMap = {};
     authorProfiles.forEach((p) => {
       profileMap[p.userId.toString()] = p;
@@ -1189,9 +1281,14 @@ router.get("/posts/:postId", protect, async (req, res) => {
         .json({ message: "Post author profile not found!" });
     }
 
-    const populatedComments = (post.comments || []).map((comment) => {
-      const commenterProfile = profileMap[comment.author.toString()];
-      return {
+          const populatedComments = (post.comments || [])
+        .filter((comment) => {
+          const cp = profileMap[comment.author.toString()];
+          return cp && cp.isActive !== false;
+        })
+        .map((comment) => {
+        const commenterProfile = profileMap[comment.author.toString()];
+        return {
         _id: comment._id,
         content: comment.content,
         createdAt: comment.createdAt,
@@ -1222,7 +1319,12 @@ router.get("/posts/:postId", protect, async (req, res) => {
         profilePicture: authorProfile.profilePicture,
       },
       comments: populatedComments,
-      reactions: (post.reactions || []).map((reaction) => {
+      reactions: (post.reactions || [])
+        .filter((reaction) => {
+          const rp = profileMap[reaction.user.toString()];
+          return rp && rp.isActive !== false;
+        })
+        .map((reaction) => {
         const reactorProfile = profileMap[reaction.user.toString()];
         return {
           user: reaction.user,
@@ -1441,6 +1543,10 @@ router.get("/chat/conversations", protect, async (req, res) => {
       .populate("receiver", "firstName lastName");
 
     // Build a map: friendId -> { lastMessage, unread }
+    const mySp = await SocialProfile.findOne({ userId: me }).select("friends");
+    const myFriendIds = new Set(
+      (mySp?.friends || []).map((f) => f.toString())
+    );
     const convMap = new Map();
     for (const msg of messages) {
       const friendId =
@@ -1456,7 +1562,7 @@ router.get("/chat/conversations", protect, async (req, res) => {
         });
         // Fetch social profile for username/picture
         const sp = await SocialProfile.findOne({ userId: friendId }).select(
-          "username profilePicture displayName"
+          "username profilePicture displayName isActive"
         );
         const friendUser =
           msg.sender._id.toString() === me.toString()
@@ -1464,13 +1570,15 @@ router.get("/chat/conversations", protect, async (req, res) => {
             : msg.sender;
         convMap.set(friendId, {
           friendId,
-          firstName: friendUser.firstName,
-          lastName: friendUser.lastName,
-          username: sp?.username || null,
-          profilePicture: sp?.profilePicture || null,
+          firstName: sp?.isActive === false ? "Account Deactivated" : friendUser.firstName,
+          lastName: sp?.isActive === false ? "" : friendUser.lastName,
+          username: sp?.isActive === false ? null : (sp?.username || null),
+          profilePicture: sp?.isActive === false ? null : (sp?.profilePicture || null),
           lastMessage: msg.content,
           lastMessageAt: msg.createdAt,
           unread,
+          isFriend: myFriendIds.has(friendId) && sp?.isActive !== false,
+          isDeactivated: sp?.isActive === false,
         });
       }
     }
@@ -1487,10 +1595,20 @@ router.get("/chat/:friendId", protect, async (req, res) => {
     const me = req.user._id;
     const { friendId } = req.params;
 
-    // Verify they are friends
+    // Allow read if still friends OR they have past message history (e.g. after unfriend)
     const sp = await SocialProfile.findOne({ userId: me });
-    if (!sp || !sp.friends.map((f) => f.toString()).includes(friendId)) {
-      return res.status(403).json({ message: "Not friends" });
+    const isFriend =
+      sp && sp.friends.map((f) => f.toString()).includes(friendId);
+    if (!isFriend) {
+      const hasHistory = await Message.exists({
+        $or: [
+          { sender: me, receiver: friendId },
+          { sender: friendId, receiver: me },
+        ],
+      });
+      if (!hasHistory) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
     }
 
     const messages = await Message.find({
@@ -1531,9 +1649,16 @@ router.post("/chat/:friendId", protect, async (req, res) => {
       return res.status(400).json({ message: "Message too long" });
     }
 
-    // Verify they are friends
     const sp = await SocialProfile.findOne({ userId: me });
-    if (!sp || !sp.friends.map((f) => f.toString()).includes(friendId)) {
+    const theirSp = await SocialProfile.findOne({ userId: friendId });
+
+    if (!sp || sp.isActive === false) {
+      return res.status(403).json({ message: "Activate your social account to send messages." });
+    }
+    if (!theirSp || theirSp.isActive === false) {
+      return res.status(403).json({ message: "This account is deactivated." });
+    }
+    if (!sp.friends.map((f) => f.toString()).includes(friendId)) {
       return res.status(403).json({ message: "Not friends" });
     }
 

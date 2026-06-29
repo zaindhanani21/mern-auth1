@@ -28,6 +28,7 @@ import {
   EyeOff,
   Edit2,
   Lock,
+  MessageCircle,
 } from "lucide-react";
 import "./Css/ModernDashboard.css";
 
@@ -486,7 +487,7 @@ export default function Dashboard({ userData, onLogout }) {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   // 🟢 Friends, Public Profile, & Social Feed States
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
-  const [friendSearchResult, setFriendSearchResult] = useState(null);
+  const [friendSearchResults, setFriendSearchResults] = useState([]);
   const [friendSearchLoading, setFriendSearchLoading] = useState(false);
   const [friendSearchError, setFriendSearchError] = useState("");
   const [friendRequests, setFriendRequests] = useState([]);
@@ -510,14 +511,19 @@ export default function Dashboard({ userData, onLogout }) {
   const [feedLoading, setFeedLoading] = useState(true); // Feed load spinner control
 
   // Chat States
+  const [socialView, setSocialView] = useState("feed"); // "feed" | "messages"
   const [chatView, setChatView] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [conversations, setConversations] = useState([]);
-  const [showConversations, setShowConversations] = useState(false);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
-  const [onlineFriendIds, setOnlineFriendIds] = useState(new Set()); // Socket: online friends
+  const [onlineFriendIds, setOnlineFriendIds] = useState(new Set());
+  // Messages screen search (friends only)
+  const [msgSearchQuery, setMsgSearchQuery] = useState("");
+  const [msgSearchResults, setMsgSearchResults] = useState([]);
+  const [msgSearchError, setMsgSearchError] = useState("");
+  const [msgSearchLoading, setMsgSearchLoading] = useState(false);
 
   const [splitForm, setSplitForm] = useState({
     description: "",
@@ -866,7 +872,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-  // Chat functions
+    // Chat functions
   const fetchConversations = useCallback(async () => {
     const t = getToken();
     if (!t) return;
@@ -877,18 +883,35 @@ export default function Dashboard({ userData, onLogout }) {
       if (res.ok) {
         const data = await res.json();
         setConversations(data);
-        setTotalUnreadMessages(data.reduce((sum, c) => sum + c.unread, 0));
+        // Number of conversations with unread messages
+        setTotalUnreadMessages(data.filter((c) => c.unread > 0).length);
       }
-    } catch (e) { console.error("Error fetching conversations", e); }
+    } catch (e) {
+      console.error("Error fetching conversations", e);
+    }
   }, []);
 
   const openChatWith = useCallback(async (friend) => {
     const t = getToken();
     if (!t) return;
-    setChatView(friend);
-    setShowConversations(false);
+    const friendId = friend.id || friend._id || friend.friendId;
+    const isDeactivated = friend.isDeactivated === true;
+    const isFriend = isDeactivated
+      ? false
+      : friend.isFriend !== undefined
+        ? friend.isFriend
+        : friendsList.some((f) => f._id === friendId);
+    setChatView({
+      id: friendId,
+      firstName: isDeactivated ? "Account Deactivated" : friend.firstName,
+      lastName: isDeactivated ? "" : friend.lastName,
+      username: isDeactivated ? null : friend.username,
+      profilePicture: isDeactivated ? null : friend.profilePicture,
+      isFriend,
+      isDeactivated,
+    });
+    setSocialView("messages");
     try {
-      const friendId = friend.id || friend._id || friend.friendId;
       const res = await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
         headers: { Authorization: `Bearer ${t}` },
       });
@@ -897,11 +920,13 @@ export default function Dashboard({ userData, onLogout }) {
         setChatMessages(data);
         fetchConversations();
       }
-    } catch (e) { console.error("Error fetching chat messages", e); }
-  }, [fetchConversations]);
+    } catch (e) {
+      console.error("Error fetching chat messages", e);
+    }
+  }, [fetchConversations, friendsList]);
 
   const handleSendMessage = async () => {
-    if (!chatInput.trim() || !chatView || chatSending) return;
+    if (!chatInput.trim() || !chatView || chatSending || chatView.isFriend === false || chatView.isDeactivated) return;
     const t = getToken();
     const friendId = chatView.id || chatView._id || chatView.friendId;
     setChatSending(true);
@@ -912,8 +937,74 @@ export default function Dashboard({ userData, onLogout }) {
         body: JSON.stringify({ content: chatInput.trim() }),
       });
       if (res.ok) setChatInput("");
-    } catch (e) { console.error("Error sending message", e); }
-    finally { setChatSending(false); }
+    } catch (e) {
+      console.error("Error sending message", e);
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+    // Mark messages as read when chat is open
+  const markChatAsRead = useCallback(async (friendId) => {
+    const t = getToken();
+    if (!t || !friendId) return;
+    try {
+      await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      fetchConversations();
+    } catch (e) {
+      console.error("Error marking chat as read", e);
+    }
+  }, [fetchConversations]);
+
+  // Keep chat messaging enabled/disabled in sync when friendship changes (no refresh needed)
+  useEffect(() => {
+    const friendIdSet = new Set(friendsList.map((f) => String(f._id)));
+
+    setChatView((prev) => {
+      if (!prev) return prev;
+      const pid = String(prev.id || prev._id || prev.friendId);
+      const nowFriend = friendIdSet.has(pid);
+      if (prev.isFriend === nowFriend) return prev;
+      return { ...prev, isFriend: nowFriend };
+    });
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        const nowFriend = friendIdSet.has(String(c.friendId));
+        if (c.isFriend === nowFriend) return c;
+        return { ...c, isFriend: nowFriend };
+      })
+    );
+  }, [friendsList]);
+
+  // Messages screen: friend search (friends only)
+  const handleMsgFriendSearch = async (e) => {
+    e?.preventDefault();
+    if (!msgSearchQuery.trim()) return;
+    setMsgSearchLoading(true);
+    setMsgSearchError("");
+    setMsgSearchResults([]);
+    try {
+      const res = await fetch(
+        `http://localhost:5000/api/profile/search?q=${encodeURIComponent(msgSearchQuery.trim())}`,
+        { headers: { Authorization: `Bearer ${getToken()}` } }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        setMsgSearchResults(data.results || []);
+        if ((data.results || []).length === 0) {
+          setMsgSearchError("No users found.");
+        }
+      } else {
+        setMsgSearchError(data.message || "No users found.");
+      }
+    } catch {
+      setMsgSearchError("Network error while searching.");
+    } finally {
+      setMsgSearchLoading(false);
+    }
   };
 
   // 🟢 Kisi specific searched user ke posts fetch karna public profile display ke liye
@@ -934,25 +1025,28 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Friends Search Bar submit handler
+  // 🟢 Friends Search Bar submit handler (name + username)
   const handleFriendSearch = async (e) => {
     e?.preventDefault();
     if (!friendSearchQuery.trim()) return;
     setFriendSearchLoading(true);
     setFriendSearchError("");
-    setFriendSearchResult(null);
+    setFriendSearchResults([]);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/search?username=${encodeURIComponent(friendSearchQuery.trim())}`,
+        `http://localhost:5000/api/profile/search?q=${encodeURIComponent(friendSearchQuery.trim())}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
       );
       const data = await res.json();
       if (res.ok) {
-        setFriendSearchResult(data);
+        setFriendSearchResults(data.results || []);
+        if ((data.results || []).length === 0) {
+          setFriendSearchError("No users found.");
+        }
       } else {
-        setFriendSearchError(data.message || "User not found.");
+        setFriendSearchError(data.message || "No users found.");
       }
     } catch {
       setFriendSearchError("Network error while searching.");
@@ -964,13 +1058,15 @@ export default function Dashboard({ userData, onLogout }) {
   // 🟢 Send Friend Request (Updated with Instant UI Optimistic Update)
   const handleSendFriendRequest = async (recipientId) => {
     // 1. Back up current state in case of failure
-    const prevSearchResult = friendSearchResult;
+    const prevSearchResults = friendSearchResults;
     const prevSelectedUser = selectedPublicUser;
 
     // 2. Optimistic Update: Instantly change UI status to SENT (No Delay!)
-    if (friendSearchResult && friendSearchResult.id === recipientId) {
-      setFriendSearchResult({ ...friendSearchResult, status: "SENT" });
-    }
+    setFriendSearchResults((prev) =>
+      prev.map((u) =>
+        u.id === recipientId ? { ...u, status: "SENT" } : u
+      )
+    );
     if (selectedPublicUser && selectedPublicUser.id === recipientId) {
       setSelectedPublicUser((prev) => ({ ...prev, status: "SENT" }));
     }
@@ -996,13 +1092,13 @@ export default function Dashboard({ userData, onLogout }) {
         });
 
         // Finalize state with the real requestId from database
-        if (friendSearchResult && friendSearchResult.id === recipientId) {
-          setFriendSearchResult({
-            ...friendSearchResult,
-            status: "SENT",
-            requestId: data.requestId,
-          });
-        }
+        setFriendSearchResults((prev) =>
+          prev.map((u) =>
+            u.id === recipientId
+              ? { ...u, status: "SENT", requestId: data.requestId }
+              : u
+          )
+        );
         if (selectedPublicUser && selectedPublicUser.id === recipientId) {
           setSelectedPublicUser({
             ...selectedPublicUser,
@@ -1012,13 +1108,13 @@ export default function Dashboard({ userData, onLogout }) {
         }
       } else {
         // Rollback to old state if request fails
-        setFriendSearchResult(prevSearchResult);
+        setFriendSearchResults(prevSearchResults);
         setSelectedPublicUser(prevSelectedUser);
         setToast({ title: "Error", msg: data.message, type: "error" });
       }
     } catch {
       // Rollback to old state if network fails
-      setFriendSearchResult(prevSearchResult);
+      setFriendSearchResults(prevSearchResults);
       setSelectedPublicUser(prevSelectedUser);
       setToast({
         title: "Error",
@@ -1031,7 +1127,7 @@ export default function Dashboard({ userData, onLogout }) {
   // 🟢 Accept Friend Request (Updated with Instant UI Optimistic Update)
   const handleAcceptFriendRequest = async (requestId, senderName) => {
     // 1. Back up current states
-    const prevSearchResult = friendSearchResult;
+    const prevSearchResults = friendSearchResults;
     const prevSelectedUser = selectedPublicUser;
     const prevRequests = friendRequests;
 
@@ -1040,13 +1136,13 @@ export default function Dashboard({ userData, onLogout }) {
     const senderId = requestObj?.sender?._id || requestObj?.sender?.id;
 
     // 2. Optimistic Update: Instantly set status to FRIENDS and hide from dropdown (No Delay!)
-    if (
-      friendSearchResult &&
-      (friendSearchResult.requestId === requestId ||
-        friendSearchResult.id === senderId)
-    ) {
-      setFriendSearchResult({ ...friendSearchResult, status: "FRIENDS" });
-    }
+    setFriendSearchResults((prev) =>
+      prev.map((u) =>
+        u.requestId === requestId || u.id === senderId
+          ? { ...u, status: "FRIENDS" }
+          : u
+      )
+    );
     if (
       selectedPublicUser &&
       (selectedPublicUser.requestId === requestId ||
@@ -1055,6 +1151,15 @@ export default function Dashboard({ userData, onLogout }) {
       setSelectedPublicUser({ ...selectedPublicUser, status: "FRIENDS" });
     }
     setFriendRequests((prev) => prev.filter((r) => r._id !== requestId));
+
+    setChatView((prev) => {
+      if (!prev || !senderId) return prev;
+      const chatUserId = String(prev.id || prev._id || prev.friendId);
+      if (chatUserId === String(senderId)) {
+        return { ...prev, isFriend: true };
+      }
+      return prev;
+    });
 
     try {
       const res = await fetch(
@@ -1083,7 +1188,7 @@ export default function Dashboard({ userData, onLogout }) {
         }
       } else {
         // Rollback if server rejects request
-        setFriendSearchResult(prevSearchResult);
+        setFriendSearchResults(prevSearchResults);
         setSelectedPublicUser(prevSelectedUser);
         setFriendRequests(prevRequests);
         const data = await res.json();
@@ -1091,7 +1196,7 @@ export default function Dashboard({ userData, onLogout }) {
       }
     } catch {
       // Rollback on network failure
-      setFriendSearchResult(prevSearchResult);
+      setFriendSearchResults(prevSearchResults);
       setSelectedPublicUser(prevSelectedUser);
       setFriendRequests(prevRequests);
       setToast({
@@ -1103,9 +1208,10 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   // 🟢 Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
+  // 🟢 Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
   const handleRejectFriendRequest = async (requestId) => {
     // 1. Back up current states
-    const prevSearchResult = friendSearchResult;
+    const prevSearchResults = friendSearchResults;
     const prevSelectedUser = selectedPublicUser;
     const prevRequests = friendRequests;
 
@@ -1113,18 +1219,14 @@ export default function Dashboard({ userData, onLogout }) {
     const requestObj = friendRequests.find((r) => r._id === requestId);
     const senderId = requestObj?.sender?._id || requestObj?.sender?.id;
 
-    // 2. Optimistic Update: Instantly set status to NONE and hide from dropdown (No Delay!)
-    if (
-      friendSearchResult &&
-      (friendSearchResult.requestId === requestId ||
-        friendSearchResult.id === senderId)
-    ) {
-      setFriendSearchResult({
-        ...friendSearchResult,
-        status: "NONE",
-        requestId: null,
-      });
-    }
+    // 2. Optimistic Update: Instantly set status to NONE
+    setFriendSearchResults((prev) =>
+      prev.map((u) =>
+        u.requestId === requestId || u.id === senderId
+          ? { ...u, status: "NONE", requestId: null }
+          : u
+      )
+    );
     if (
       selectedPublicUser &&
       (selectedPublicUser.requestId === requestId ||
@@ -1159,7 +1261,7 @@ export default function Dashboard({ userData, onLogout }) {
         fetchFriendRequests();
       } else {
         // Rollback if server fails
-        setFriendSearchResult(prevSearchResult);
+        setFriendSearchResults(prevSearchResults);
         setSelectedPublicUser(prevSelectedUser);
         setFriendRequests(prevRequests);
         const data = await res.json();
@@ -1167,7 +1269,7 @@ export default function Dashboard({ userData, onLogout }) {
       }
     } catch {
       // Rollback on network failure
-      setFriendSearchResult(prevSearchResult);
+      setFriendSearchResults(prevSearchResults);
       setSelectedPublicUser(prevSelectedUser);
       setFriendRequests(prevRequests);
       setToast({
@@ -1199,9 +1301,11 @@ export default function Dashboard({ userData, onLogout }) {
         });
         fetchFriends();
         fetchHomeFeed();
-        if (friendSearchResult && friendSearchResult.id === friendId) {
-          setFriendSearchResult({ ...friendSearchResult, status: "NONE" });
-        }
+        setFriendSearchResults((prev) =>
+          prev.map((u) =>
+            u.id === friendId ? { ...u, status: "NONE" } : u
+          )
+        );
         if (selectedPublicUser && selectedPublicUser.id === friendId) {
           setSelectedPublicUser((prev) => ({ ...prev, status: "NONE" }));
           fetchPublicUserPosts(friendId); // 🟢 User Profile page ke posts ko foran refresh karein
@@ -1500,6 +1604,15 @@ export default function Dashboard({ userData, onLogout }) {
       fetchFriends();
       fetchHomeFeed();
 
+      setChatView((prev) => {
+        if (!prev || !data.friend?.id) return prev;
+        const chatUserId = String(prev.id || prev._id || prev.friendId);
+        if (chatUserId === String(data.friend.id)) {
+          return { ...prev, isFriend: true };
+        }
+        return prev;
+      });
+
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.friend.id) {
           fetchPublicUserPosts(data.friend.id); // 🟢 User Profile page ko update karein
@@ -1644,15 +1757,53 @@ export default function Dashboard({ userData, onLogout }) {
 
     // 🚫 Real-time Deactivation (Clear deactivated user's posts instantly - Naya Code)
     newSocket.on("social_deactivated", (data) => {
-      // 1. Timeline feed se deactivated user ke posts foran delete karo
-      setHomeFeedPosts((prev) =>
-        prev.filter((post) => post.author._id !== data.userId),
-      );
+      const stripUserFromPosts = (posts) =>
+        posts.map((post) => ({
+          ...post,
+          comments: (post.comments || []).filter(
+            (c) => String(c.author?._id || c.author?.id || c.author) !== String(data.userId)
+          ),
+          reactions: (post.reactions || []).filter(
+            (r) => String(r.user?._id || r.user?.id || r.user) !== String(data.userId)
+          ),
+        })).filter((post) => String(post.author?._id || post.author?.id) !== String(data.userId));
 
-      // 2. Agar hum currently isi user ki profile dekh rahe hain, toh use close kar do
+      setHomeFeedPosts((prev) => stripUserFromPosts(prev));
+      setPublicUserPosts((prev) => stripUserFromPosts(prev));
+      setFriendsList((prev) => prev.filter((f) => f._id !== data.userId));
+      setFriendSearchResults((prev) => prev.filter((u) => u.id !== data.userId));
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.friendId === data.userId
+            ? {
+                ...c,
+                firstName: "Account Deactivated",
+                lastName: "",
+                isFriend: false,
+                isDeactivated: true,
+              }
+            : c
+        )
+      );
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.userId) {
           return null;
+        }
+        return prev;
+      });
+      fetchFriendRequests();
+    });
+
+    newSocket.on("social_activated", (data) => {
+      fetchFriends();
+      fetchHomeFeed();
+      fetchConversations();
+      fetchFriendRequests();
+      setChatView((prev) => {
+        if (!prev) return prev;
+        const pid = String(prev.id || prev._id || prev.friendId);
+        if (pid === String(data.userId)) {
+          return { ...prev, isDeactivated: false, isFriend: true };
         }
         return prev;
       });
@@ -1660,17 +1811,29 @@ export default function Dashboard({ userData, onLogout }) {
 
     // Real-time: New chat message
     newSocket.on("new_message", (msg) => {
+      const senderId = String(msg.sender?._id || msg.sender);
+      const receiverId = String(msg.receiver?._id || msg.receiver);
+      const myId = String(userId);
+
       setChatView((prevChat) => {
         if (prevChat) {
-          const fid = prevChat.id || prevChat._id || prevChat.friendId;
-          if (msg.sender === fid || msg.receiver === fid || msg.sender === userId || msg.receiver === userId) {
-            setChatMessages((prev) => prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]);
+          const fid = String(prevChat.id || prevChat._id || prevChat.friendId);
+          if (senderId === fid || receiverId === fid) {
+            setChatMessages((prev) =>
+              prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]
+            );
+            // Chat khuli hai aur msg saamne wale ne bheja → read mark
+            if (senderId === fid && senderId !== myId) {
+              markChatAsRead(fid);
+            }
           }
         }
         return prevChat;
       });
+
       fetchConversations();
     });
+
 
     newSocket.on("messages_read", () => fetchConversations());
 
@@ -1692,6 +1855,7 @@ export default function Dashboard({ userData, onLogout }) {
     fetchFriendRequests,
     fetchHomeFeed,
     fetchConversations,
+    markChatAsRead,
   ]);
 
   // 🟢 Safepay/Stripe Callback URL Parameters check (Wait until profile is loaded from backend)
@@ -2894,8 +3058,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Deactivate Social Profile (Delete username & displayName)
-  const confirmDeactivateSocial = async () => {
+    const confirmDeactivateSocial = async () => {
     setLoading(true);
     try {
       const res = await fetch(
@@ -2906,15 +3069,48 @@ export default function Dashboard({ userData, onLogout }) {
         },
       );
       if (res.ok) {
-        // Local React state ko reset karna taake screen instantly onboarding par chali jaye!
-        setProfile((prev) => ({ ...prev, username: null }));
-        setSocialStep(1); // Consent screen (step 1) par reset karna
-        setUsernameInput(""); // Type kiya hua purana username clear karna
-        setDisplayNameInput(""); // 🟢 Reset display name too
-        setIsUsernameAvailable(false);
+        setProfile((prev) => ({ ...prev, socialActive: false }));
+        setSelectedPublicUser(null);
+        setChatView(null);
+        setChatMessages([]);
+        setSocialView("feed");
         setToast({
-          title: "Profile Deleted",
-          msg: "Your Wallexa Social Profile has been deactivated successfully.",
+          title: "Account Deactivated",
+          msg: "Your social profile has been paused. You can reactivate anytime.",
+          type: "success",
+        });
+      } else {
+        const data = await res.json();
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      setToast({ title: "Error", msg: "Network error", type: "error" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  // 🟢 Deactivate Social Profile (Delete username & displayName)
+    const confirmActivateSocial = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        "http://localhost:5000/api/profile/activate-social",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        },
+      );
+      if (res.ok) {
+        setProfile((prev) => ({ ...prev, socialActive: true }));
+        fetchFriends();
+        fetchHomeFeed();
+        fetchConversations();
+        fetchFriendRequests();
+        setToast({
+          title: "Account Activated",
+          msg: "Welcome back! Your social profile is live again.",
           type: "success",
         });
       } else {
@@ -3707,6 +3903,7 @@ export default function Dashboard({ userData, onLogout }) {
     </div>
   );
 
+  
   const renderSocial = () => {
     // 1. Loading screen agar profile fetch nahi hui abhi tak
     if (!profile) {
@@ -3716,9 +3913,53 @@ export default function Dashboard({ userData, onLogout }) {
           style={{ textAlign: "center", padding: "50px" }}
         >
           <p style={{ color: "#94a3b8" }}>Loading profile details...</p>
+              {/* Floating Chat Box Widget */}
+      
         </div>
       );
     }
+        // 2b. DEACTIVATED ACCOUNT SCREEN (pause — data safe, can reactivate)
+    if (profile.username && profile.socialActive === false) {
+      return (
+        <div className="view-container">
+          <div
+            style={{
+              maxWidth: "500px",
+              margin: "50px auto 0 auto",
+              background: "var(--bg-card)",
+              padding: "40px 30px",
+              borderRadius: "24px",
+              border: "1px solid rgba(255, 255, 255, 0.05)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+              textAlign: "center",
+            }}
+          >
+            <h2 style={{ color: "#f8fafc", marginBottom: "12px", fontSize: "1.4rem" }}>
+              Social Account Deactivated
+            </h2>
+            <p style={{ color: "#94a3b8", lineHeight: "1.6", marginBottom: "28px", fontSize: "0.95rem" }}>
+              Your social profile is currently hidden from everyone.
+              Your posts, friends, and data are saved safely.
+            </p>
+            <p style={{ color: "#cbd5e1", fontWeight: 600, marginBottom: "20px" }}>
+              Do you want to activate your account?
+            </p>
+            <button
+              className="primary-button"
+              onClick={confirmActivateSocial}
+              disabled={loading}
+              style={{ width: "100%", marginBottom: "12px" }}
+            >
+              {loading ? "Activating..." : "Yes, Activate My Account"}
+            </button>
+            <p style={{ color: "#64748b", fontSize: "0.85rem" }}>
+              Your wallet and other features still work normally.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
 
     // 2. ONBOARDING FLOW: Agar user ka username register nahi hai (First-Time Visit)
     if (!profile.username) {
@@ -3887,7 +4128,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
 
     // 3. PUBLIC PROFILE SCREEN: Jab selectedPublicUser set ho (User clicks on a searched card or friend)
-    if (selectedPublicUser) {
+    if (selectedPublicUser && !chatView && socialView !== "messages") {
       return (
         <div className="view-container">
           {/* Header with Back button */}
@@ -3958,7 +4199,7 @@ export default function Dashboard({ userData, onLogout }) {
                   }}
                 />
               ) : (
-                selectedPublicUser.firstName.charAt(0).toUpperCase()
+                selectedPublicUser.firstName?.charAt(0)?.toUpperCase() || "?"
               )}
             </div>
 
@@ -4082,11 +4323,19 @@ export default function Dashboard({ userData, onLogout }) {
                   </button>
 
                   {/* MESSAGE BUTTON */}
+                                    {/* MESSAGE BUTTON */}
                   <button
                     key="message-friend-btn"
                     className="primary-button"
                     style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "5px", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}
-                    onClick={() => openChatWith({ id: selectedPublicUser.id, firstName: selectedPublicUser.firstName, lastName: selectedPublicUser.lastName, username: selectedPublicUser.username, profilePicture: selectedPublicUser.profilePicture })}
+                    onClick={() => openChatWith({
+  id: selectedPublicUser.id,
+  firstName: selectedPublicUser.firstName,
+  lastName: selectedPublicUser.lastName,
+  username: selectedPublicUser.username,
+  profilePicture: selectedPublicUser.profilePicture,
+  isFriend: true,
+})}
                   >
                     💬 Message
                   </button>
@@ -4120,6 +4369,7 @@ export default function Dashboard({ userData, onLogout }) {
                   >
                     <UserMinus size={16} /> Unfriend
                   </button>
+                  
                 </div>
               )}
               {selectedPublicUser.status === "SELF" && (
@@ -4764,16 +5014,162 @@ export default function Dashboard({ userData, onLogout }) {
               );
             })()}
           </div>
+
+        </div>
+      );
+    
+    }
+
+    // 4a. MESSAGES LIST SCREEN
+    if (socialView === "messages" && !chatView) {
+      return (
+        <div className="view-container">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+            <button
+              onClick={() => {
+                setSocialView("feed");
+                setMsgSearchQuery("");
+                setMsgSearchResults([]);
+                setMsgSearchError("");
+              }}
+              style={{ background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0", padding: "8px 16px", borderRadius: "10px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}
+            >
+              &larr; Back to Feed
+            </button>
+            <h2 style={{ color: "#f8fafc", margin: 0, fontSize: "1.2rem" }}>Messages</h2>
+            {totalUnreadMessages > 0 && (
+              <span style={{ background: "#ef4444", color: "white", borderRadius: "20px", padding: "2px 10px", fontSize: "0.8rem", fontWeight: 700 }}>
+                {totalUnreadMessages} unread
+              </span>
+            )}
+          </div>
+
+          <form onSubmit={handleMsgFriendSearch} style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+            <div style={{ flex: 1, position: "relative" }}>
+              <Search size={18} style={{ position: "absolute", left: "15px", top: "13px", color: "#94a3b8" }} />
+              <input
+                className="form-input"
+                placeholder="Search by name or username..."
+                value={msgSearchQuery}
+                onChange={(e) => setMsgSearchQuery(e.target.value)}
+                style={{ paddingLeft: "45px" }}
+              />
+            </div>
+            <button className="primary-button" style={{ width: "auto", padding: "0 25px" }} type="submit" disabled={msgSearchLoading}>
+              {msgSearchLoading ? "..." : "Search"}
+            </button>
+          </form>
+
+          {msgSearchError && (
+            <p style={{ color: "#ef4444", fontSize: "0.85rem", marginBottom: "12px" }}>✗ {msgSearchError}</p>
+          )}
+
+          {msgSearchResults.length > 0 && (
+            <div style={{ marginBottom: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {msgSearchResults.map((user) => (
+                <div
+                  key={user.id}
+                  style={{
+                    background: "rgba(99, 102, 241, 0.05)",
+                    border: "1px solid rgba(99, 102, 241, 0.2)",
+                    padding: "15px 20px",
+                    borderRadius: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ width: "45px", height: "45px", borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "white", overflow: "hidden" }}>
+                      {user.profilePicture ? (
+                        <img src={user.profilePicture} alt="" style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                      ) : (
+                        user.firstName?.[0]?.toUpperCase()
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ color: "#f8fafc", fontWeight: 600 }}>{user.firstName} {user.lastName}</div>
+                      <div style={{ color: "#6366f1", fontSize: "0.85rem" }}>@{user.username}</div>
+                    </div>
+                  </div>
+                  {user.status === "FRIENDS" ? (
+                    <button
+                      className="primary-button"
+                      style={{ width: "auto", padding: "8px 18px", background: "#6366f1" }}
+                      onClick={() => {
+                        openChatWith(user);
+                        setMsgSearchResults([]);
+                        setMsgSearchQuery("");
+                      }}
+                    >
+                      Open Chat
+                    </button>
+                  ) : (
+                    <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>You can only chat with friends</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <h4 style={{ color: "#f8fafc", fontSize: "1rem", fontWeight: 700, marginBottom: "14px", borderBottom: "1px solid #334155", paddingBottom: "10px" }}>
+            Recent Conversations
+          </h4>
+          {conversations.length === 0 ? (
+            <p style={{ color: "#94a3b8", fontSize: "0.9rem", textAlign: "center", padding: "24px 0" }}>
+              No conversations yet. Search a friend above!
+            </p>
+          ) : (
+            conversations.map((conv) => (
+              <div
+                key={conv.friendId}
+                onClick={() => openChatWith(conv)}
+                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", cursor: "pointer", background: "#243447", marginBottom: "8px", border: "1px solid #334155" }}
+              >
+                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, overflow: "hidden", flexShrink: 0 }}>
+                  {conv.profilePicture ? <img src={conv.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : conv.firstName?.[0]?.toUpperCase()}
+                </div>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <div style={{ color: "#f8fafc", fontWeight: 600, fontSize: "0.92rem" }}>{conv.firstName} {conv.lastName}</div>
+                  <div style={{ color: "#94a3b8", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.lastMessage}</div>
+                </div>
+                {conv.unread > 0 && (
+                  <span style={{ background: "#6366f1", color: "white", borderRadius: "50%", minWidth: "22px", height: "22px", fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{conv.unread}</span>
+                )}
+              </div>
+            ))
+          )}
         </div>
       );
     }
+
     // 4b. CHAT VIEW
     if (chatView) {
       const scrollRef = (el) => { if (el) el.scrollTop = el.scrollHeight; };
       return (
         <div className="view-container">
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
-            <button onClick={() => { setChatView(null); setChatMessages([]); }} style={{ background: "#1e293b", border: "1px solid #475569", color: "#e2e8f0", padding: "8px 16px", borderRadius: "10px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>
+            <button
+              onClick={async () => {
+                const friendId = chatView.id || chatView._id || chatView.friendId;
+                if (friendId) {
+                  await markChatAsRead(friendId);
+                }
+                setChatView(null);
+                setChatMessages([]);
+                setSocialView("messages");
+              }}
+              style={{
+                background: "#1e293b",
+                border: "1px solid #475569",
+                color: "#e2e8f0",
+                padding: "8px 16px",
+                borderRadius: "10px",
+                cursor: "pointer",
+                fontWeight: 600,
+                fontSize: "0.9rem",
+              }}
+            >
               &larr; Back
             </button>
             <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, overflow: "hidden" }}>
@@ -4795,16 +5191,22 @@ export default function Dashboard({ userData, onLogout }) {
                     <div>{msg.content}</div>
                     <div style={{ fontSize: "0.72rem", color: isMe ? "rgba(255,255,255,0.65)" : "#64748b", marginTop: "5px", textAlign: isMe ? "right" : "left" }}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      {isMe && <span style={{ marginLeft: "5px" }}>{msg.read ? "✓✓" : "✓"}</span>}
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+          {(chatView.isDeactivated || chatView.isFriend === false) && (
+            <p style={{ color: "#94a3b8", fontSize: "0.85rem", marginTop: "12px", marginBottom: "0", textAlign: "center" }}>
+              {chatView.isDeactivated
+                ? "This account is deactivated. You can view past messages but cannot send new ones."
+                : "You are no longer friends. You can view past messages but cannot send new ones."}
+            </p>
+          )}
           <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
-            <input className="form-input" placeholder="Type a message..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} maxLength={1000} style={{ flex: 1, background: "#1e293b", color: "#f8fafc", border: "1px solid #334155" }} />
-            <button className="primary-button" style={{ width: "auto", padding: "0 24px", background: "#6366f1", color: "white", fontWeight: 600 }} onClick={handleSendMessage} disabled={chatSending || !chatInput.trim()}>Send</button>
+            <input className="form-input" placeholder={(chatView.isFriend === false || chatView.isDeactivated) ? "Messaging disabled" : "Type a message..."} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && chatView.isFriend !== false && !chatView.isDeactivated) { e.preventDefault(); handleSendMessage(); } }} maxLength={1000} disabled={chatView.isFriend === false || chatView.isDeactivated} style={{ flex: 1, background: "#1e293b", color: "#f8fafc", border: "1px solid #334155", opacity: (chatView.isFriend === false || chatView.isDeactivated) ? 0.6 : 1, cursor: (chatView.isFriend === false || chatView.isDeactivated) ? "not-allowed" : "text" }} />
+            <button className="primary-button" style={{ width: "auto", padding: "0 24px", background: "#6366f1", color: "white", fontWeight: 600, opacity: (chatView.isFriend === false || chatView.isDeactivated) ? 0.6 : 1, cursor: (chatView.isFriend === false || chatView.isDeactivated) ? "not-allowed" : "pointer" }} onClick={handleSendMessage} disabled={chatSending || !chatInput.trim() || chatView.isFriend === false || chatView.isDeactivated}>Send</button>
           </div>
         </div>
       );
@@ -4823,7 +5225,7 @@ export default function Dashboard({ userData, onLogout }) {
             </div>
             <div style={{ display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "4px" }}>
               {friendsList.filter((f) => onlineFriendIds.has(f._id)).map((friend) => (
-                <div key={friend._id} onClick={() => openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture })} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "7px", cursor: "pointer", minWidth: "60px" }}>
+                <div key={friend._id} onClick={() => openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture })}>
                   <div style={{ position: "relative" }}>
                     <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "1.1rem", overflow: "hidden", border: "2px solid #22c55e", boxShadow: "0 0 0 2px #0f172a" }}>
                       {friend.profilePicture ? <img src={friend.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : friend.firstName?.[0]?.toUpperCase()}
@@ -4837,32 +5239,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* Messages Button */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "14px" }}>
-          <button onClick={() => { setShowConversations((p) => !p); fetchConversations(); }} style={{ position: "relative", background: showConversations ? "#4f46e5" : "#6366f1", color: "#ffffff", border: "none", borderRadius: "12px", padding: "9px 18px", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 4px 12px rgba(99,102,241,0.35)" }}>
-            💬 Messages
-            {totalUnreadMessages > 0 && <span style={{ background: "#ef4444", color: "white", borderRadius: "50%", minWidth: "20px", height: "20px", fontSize: "0.72rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, padding: "0 4px" }}>{totalUnreadMessages}</span>}
-          </button>
-        </div>
-        {showConversations && (
-          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "16px", padding: "16px", marginBottom: "20px", boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }}>
-            <h4 style={{ color: "#f8fafc", fontSize: "1rem", fontWeight: 700, marginBottom: "14px", borderBottom: "1px solid #334155", paddingBottom: "10px" }}>Recent Conversations</h4>
-            {conversations.length === 0 ? (
-              <p style={{ color: "#94a3b8", fontSize: "0.9rem", textAlign: "center", padding: "16px 0" }}>No conversations yet. Message a friend!</p>
-            ) : conversations.map((conv) => (
-              <div key={conv.friendId} onClick={() => openChatWith(conv)} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px", borderRadius: "12px", cursor: "pointer", background: "#243447", marginBottom: "8px", border: "1px solid #334155", transition: "background 0.2s" }}>
-                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#a855f7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "1rem", overflow: "hidden", flexShrink: 0 }}>
-                  {conv.profilePicture ? <img src={conv.profilePicture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : conv.firstName?.[0]?.toUpperCase()}
-                </div>
-                <div style={{ flex: 1, overflow: "hidden" }}>
-                  <div style={{ color: "#f8fafc", fontWeight: 600, fontSize: "0.92rem" }}>{conv.firstName} {conv.lastName}</div>
-                  <div style={{ color: "#94a3b8", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>{conv.lastMessage}</div>
-                </div>
-                {conv.unread > 0 && <span style={{ background: "#6366f1", color: "white", borderRadius: "50%", minWidth: "22px", height: "22px", fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, padding: "0 4px" }}>{conv.unread}</span>}
-              </div>
-            ))}
-          </div>
-        )}
+
 
         {/* 🔍 Search Bar Section */}
         <div style={{ marginBottom: "20px" }}>
@@ -4882,7 +5259,7 @@ export default function Dashboard({ userData, onLogout }) {
               />
               <input
                 className="form-input"
-                placeholder="Search friends by username (e.g. John)..."
+                placeholder="Search by name or username (e.g. Zain)..."
                 value={friendSearchQuery}
                 onChange={(e) => setFriendSearchQuery(e.target.value)}
                 style={{ paddingLeft: "45px" }}
@@ -4912,86 +5289,90 @@ export default function Dashboard({ userData, onLogout }) {
             </p>
           )}
 
-          {/* Searched User Card (Result) */}
-          {friendSearchResult && (
-            <div
-              style={{
-                background: "rgba(99, 102, 241, 0.05)",
-                border: "1px solid rgba(99, 102, 241, 0.2)",
-                padding: "15px 20px",
-                borderRadius: "16px",
-                marginTop: "15px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "12px" }}
-              >
+          {/* Search Results List */}
+          {friendSearchResults.length > 0 && (
+            <div style={{ marginTop: "15px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <p style={{ color: "#94a3b8", fontSize: "0.85rem", margin: "0 0 4px 5px" }}>
+                {friendSearchResults.length} result(s) found
+              </p>
+              {friendSearchResults.map((user) => (
                 <div
+                  key={user.id}
                   style={{
-                    width: "45px",
-                    height: "45px",
-                    borderRadius: "50%",
-                    background:
-                      "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+                    background: "rgba(99, 102, 241, 0.05)",
+                    border: "1px solid rgba(99, 102, 241, 0.2)",
+                    padding: "15px 20px",
+                    borderRadius: "16px",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 700,
-                    color: "white",
+                    justifyContent: "space-between",
                   }}
                 >
-                  {friendSearchResult.profilePicture ? (
-                    <img
-                      src={friendSearchResult.profilePicture}
-                      alt="Avatar"
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
                       style={{
-                        width: "100%",
-                        height: "100%",
+                        width: "45px",
+                        height: "45px",
                         borderRadius: "50%",
-                        objectFit: "cover",
+                        background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        color: "white",
+                        overflow: "hidden",
                       }}
-                    />
-                  ) : (
-                    friendSearchResult.firstName.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div>
-                  <div style={{ color: "#f8fafc", fontWeight: 600 }}>
-                    {friendSearchResult.firstName} {friendSearchResult.lastName}
+                    >
+                      {user.profilePicture ? (
+                        <img
+                          src={user.profilePicture}
+                          alt="Avatar"
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        user.firstName?.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ color: "#f8fafc", fontWeight: 600 }}>
+                        {user.firstName} {user.lastName}
+                      </div>
+                      <div
+                        style={{
+                          color: "#6366f1",
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        @{user.username}
+                      </div>
+                    </div>
                   </div>
-                  <div
+
+                  <button
+                    className="primary-button"
                     style={{
-                      color: "#6366f1",
+                      width: "auto",
+                      padding: "8px 18px",
                       fontSize: "0.85rem",
-                      fontWeight: 600,
+                      background: "#6366f1",
+                    }}
+                    onClick={() => {
+                      setSelectedPublicUser(user);
+                      fetchPublicUserPosts(user.id);
+                      setFriendSearchResults([]);
+                      setFriendSearchQuery("");
                     }}
                   >
-                    @{friendSearchResult.username}
-                  </div>
+                    View Profile
+                  </button>
                 </div>
-              </div>
-
-              {/* Click triggers detail profile & fetches their posts */}
-              <button
-                className="primary-button"
-                style={{
-                  width: "auto",
-                  padding: "8px 18px",
-                  fontSize: "0.85rem",
-                  background: "#6366f1",
-                }}
-                onClick={() => {
-                  setSelectedPublicUser(friendSearchResult);
-                  fetchPublicUserPosts(friendSearchResult.id);
-                  setFriendSearchResult(null);
-                  setFriendSearchQuery("");
-                }}
-              >
-                View Profile
-              </button>
+              ))}
             </div>
           )}
         </div>
@@ -8394,25 +8775,65 @@ export default function Dashboard({ userData, onLogout }) {
 
           <div className="header-actions">
             {/* 👤 MY SOCIAL PROFILE ICON (Only visible on Social Feed tab) */}
+            {/* 💬 MESSAGES BUTTON (Social Feed header) */}
+            {activeTab === "social" && (
+              <button
+                className="notif-btn"
+                style={{ position: "relative" }}
+                onClick={() => {
+                  setSelectedPublicUser(null);
+                  setChatView(null);
+                  setSocialView("messages");
+                  fetchConversations();
+                }}
+                title="Messages"
+              >
+                <MessageCircle size={24} />
+                {totalUnreadMessages > 0 && (
+                  <span
+                    className="badge"
+                    style={{
+                      background: "#ef4444",
+                      position: "absolute",
+                      top: "-2px",
+                      right: "-2px",
+                      minWidth: "18px",
+                      height: "18px",
+                      fontSize: "0.7rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                    
+                  >
+                    {totalUnreadMessages}
+                  </span>
+                  
+                )}
+              </button>
+            )}
+
+                        {/* 👤 MY SOCIAL PROFILE ICON (Messages ke right side) */}
             {activeTab === "social" && (
               <button
                 className="notif-btn"
                 onClick={() => {
+                  if (!profile) return;
                   const myUserId = profile._id || profile.id;
                   if (profile.username) {
-                    // Agar username hai, toh Social Feed wali profile kholo
                     setActiveTab("social");
+                    setSocialView("feed");
+                    setChatView(null);
                     setSelectedPublicUser({
                       id: myUserId,
                       firstName: profile.displayName,
                       lastName: "",
                       username: profile.username,
                       profilePicture: profile.profilePicture,
-                      status: "SELF", // SELF likhne se khud ko 'Add Friend' bhejne ka button hide ho jayega!
+                      status: "SELF",
                     });
-                    fetchPublicUserPosts(myUserId); // 🟢 Apni posts fetch karein!
+                    fetchPublicUserPosts(myUserId);
                   } else {
-                    // Agar username nahi banaya toh purani normal profile kholo
                     setActiveTab("profile");
                   }
                 }}
@@ -10377,10 +10798,9 @@ export default function Dashboard({ userData, onLogout }) {
                   fontSize: "0.95rem",
                 }}
               >
-                Are you sure you want to deactivate your Wallexa Social Profile?
-                This will delete your username, hide your profile from your
-                friends, and reset your social feed. You can reactivate it
-                anytime.
+                Are you sure you want to deactivate your social profile?
+                Your profile, posts, and friends will be hidden from everyone.
+                Your data will be saved and you can reactivate anytime.
               </p>
 
               <div style={{ display: "flex", gap: "10px" }}>
@@ -10393,7 +10813,7 @@ export default function Dashboard({ userData, onLogout }) {
                   }}
                   disabled={loading}
                 >
-                  {loading ? "Deactivating..." : "Confirm & Delete"}
+                  {loading ? "Deactivating..." : "Yes, Deactivate"}
                 </button>
                 <button
                   className="secondary-button"
