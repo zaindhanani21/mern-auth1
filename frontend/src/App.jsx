@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import Signup from "./components/SignUp";
 import Signin from "./components/SignIn";
 import Dashboard from "./components/Dashboard";
 import VerifyOtp from "./components/VerifyOtp";
 import LandingPage from "./components/LandingPage";
 
-// 🟢 Simplified page states (ADMIN removed)
+// ðŸŸ¢ Simplified page states (ADMIN removed)
 const PAGES = {
     LANDING: "landing",
     SIGNIN: "signin",
@@ -43,7 +43,7 @@ function App() {
         }
     }, [userData]);
 
-    // 🟢 Simplified Sign-in Handler
+    // ðŸŸ¢ Simplified Sign-in Handler
     const handleSigninResponse = (data) => {
         setGlobalMessage(null);
 
@@ -54,7 +54,7 @@ function App() {
             });
             setCurrentPage(PAGES.VERIFY_OTP);
         } else {
-            // 🟢 Everyone goes directly to the User Dashboard now
+            // ðŸŸ¢ Everyone goes directly to the User Dashboard now
             setUserData(data);
             setPendingVerification(null);
             setCurrentPage(PAGES.DASHBOARD);
@@ -82,7 +82,7 @@ function App() {
         setCurrentPage(PAGES.SIGNIN);
     };
 
-        // 🔒 Trigger Auto Logout and Email
+        // ðŸ”’ Trigger Auto Logout and Email
     const triggerAutoLogout = async () => {
         setShowInactivityWarning(false);
         const savedUser = JSON.parse(localStorage.getItem("userData"));
@@ -90,7 +90,7 @@ function App() {
         // Call backend to send inactivity logout email
         try {
             if (savedUser && savedUser.token) {
-                 fetch("http://localhost:5000/api/auth/inactivity-logout", {
+                 fetch("https://mern-auth1-qnmh.onrender.com/api/auth/inactivity-logout", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -111,7 +111,7 @@ function App() {
         setCurrentPage(PAGES.LANDING); // Redirect directly to Landing Page
     };
 
-    // 🔒 Reset Inactivity timer on activity (with 15s throttle)
+    // ðŸ”’ Reset Inactivity timer on activity (with 15s throttle)
     const resetInactivityTimer = () => {
         if (showInactivityWarning) return; // Warning screen par normal events ignore honge (Option 2)
 
@@ -129,7 +129,7 @@ function App() {
         }, 15 * 60 * 1000); 
     };
 
-    // 🔒 Click button to keep logged in
+    // ðŸ”’ Click button to keep logged in
     const handleKeepMeLoggedIn = () => {
         setShowInactivityWarning(false);
         lastResetTime.current = Date.now();
@@ -140,7 +140,7 @@ function App() {
         }, 60 * 60 * 1000);
     };
 
-    // 🔒 Effect to monitor user activity on window
+    // ðŸ”’ Effect to monitor user activity on window
     React.useEffect(() => {
         if (!userData || currentPage !== PAGES.DASHBOARD) {
             if (inactivityTimeoutRef.current) clearTimeout(inactivityTimeoutRef.current);
@@ -168,7 +168,7 @@ function App() {
         };
     }, [userData, currentPage, showInactivityWarning]);
 
-    // 🔒 Effect to handle the warning countdown (60s tick down)
+    // ðŸ”’ Effect to handle the warning countdown (60s tick down)
     React.useEffect(() => {
         if (!showInactivityWarning) {
             if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
@@ -267,7 +267,7 @@ function App() {
                 />
             )}
 
-            {/* ⏳ Premium Inactivity Warning Modal */}
+            {/* â³ Premium Inactivity Warning Modal */}
             {showInactivityWarning && (
                 <div style={{
                     position: "fixed",
@@ -292,7 +292,7 @@ function App() {
                         width: "90%",
                         border: "1px solid rgba(255, 255, 255, 0.2)",
                     }}>
-                        <div style={{ fontSize: "50px", marginBottom: "20px" }}>⏳</div>
+                        <div style={{ fontSize: "50px", marginBottom: "20px" }}>â³</div>
                         <h3 style={{
                             color: "#0f172a",
                             fontSize: "1.45rem",

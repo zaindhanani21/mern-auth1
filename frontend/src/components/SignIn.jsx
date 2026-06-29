@@ -44,7 +44,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     setLoading(true);
     setMessage("");
     try {
-      const res = await fetch("http://localhost:5000/api/auth/signin", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier, password })
@@ -73,7 +73,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
         setLoading(false);
         return;
       }
-      const res = await fetch("http://localhost:5000/api/auth/forgot-password", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: resetIdentifier, cnic: resetCnic })
@@ -115,7 +115,7 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/auth/reset-password", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: resetUserId, otpCode: resetOtp, newPassword })
@@ -316,3 +316,4 @@ export default function Signin({ onSwitchToSignup, onSigninSuccess }) {
     </div>
   );
 }
+

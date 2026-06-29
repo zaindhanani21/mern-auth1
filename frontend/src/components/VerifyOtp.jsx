@@ -41,7 +41,7 @@ export default function VerifyOtp({
     setMessage("");
     setIsLoading(true);
 
-    const base = "http://localhost:5000/api/auth";
+    const base = "https://mern-auth1-qnmh.onrender.com/api/auth";
     const endpoint = isSignupFlow
       ? `${base}/verify-signup`
       : `${base}/verify-otp`;
@@ -181,3 +181,4 @@ export default function VerifyOtp({
     </div>
   );
 }
+

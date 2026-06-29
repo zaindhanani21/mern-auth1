@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -23,7 +23,7 @@ import {
   UserMinus,
   UserCheck,
   UserX,
-  Heart, // 🟢 Heart icon add kiya
+  Heart, // ?? Heart icon add kiya
   Eye,
   EyeOff,
   Edit2,
@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import "./Css/ModernDashboard.css";
 
-const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = "https://mern-auth1-qnmh.onrender.com";
 
 // Security Masking Helper for mobile/account numbers
 const maskInfo = (val) => {
@@ -43,7 +43,7 @@ const maskInfo = (val) => {
   if (str.toLowerCase().includes("visa") || str.toLowerCase().includes("mastercard")) {
     return str;
   }
-  return `•••• ${str.slice(-4)}`;
+  return `���� ${str.slice(-4)}`;
 };
 
 // Transaction ID Masking Helper
@@ -181,16 +181,16 @@ const renderPostContent = (content, defaultColor = "#cbd5e1") => {
               >
                              <span style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: 600 }}>
                 {receipt.type === "EXTERNAL_TRANSFER" 
-                  ? "🏦 Local Bank Transfer" 
+                  ? "?? Local Bank Transfer" 
                   : receipt.type === "ADD_MONEY" 
-                    ? "💰 Wallet Deposit" 
+                    ? "?? Wallet Deposit" 
                     : receipt.type === "BILL_PAYMENT"
-                      ? "📄 Utility Bill Payment"
+                      ? "?? Utility Bill Payment"
                       : receipt.type === "SPLIT_PAYMENT"
-                        ? "🤝 Split Bill Payment"
+                        ? "?? Split Bill Payment"
                         : receipt.type === "QR_PAYMENT"
-                          ? "📱 Scan & Pay (QR)"
-                          : "💸 Wallexa P2P Transfer"}
+                          ? "?? Scan & Pay (QR)"
+                          : "?? Wallexa P2P Transfer"}
               </span>
               </div>
               <span
@@ -204,7 +204,7 @@ const renderPostContent = (content, defaultColor = "#cbd5e1") => {
                   border: "1px solid rgba(16, 185, 129, 0.2)",
                 }}
               >
-                ✓ Success
+                ? Success
               </span>
             </div>
 
@@ -445,10 +445,10 @@ export default function Dashboard({ userData, onLogout }) {
     accountNumber: "",
     amount: "",
   });
-  const [externalMode, setExternalMode] = useState("local"); // 👈 Naya state variable mode toggle ke liye
+  const [externalMode, setExternalMode] = useState("local"); // ?? Naya state variable mode toggle ke liye
   const [showExternalConfirm, setShowExternalConfirm] = useState(false);
   const [validatedAccountHolder, setValidatedAccountHolder] = useState("");
-  const [bankDropdownOpen, setBankDropdownOpen] = useState(false); // 👈 Custom dropdown toggle state
+  const [bankDropdownOpen, setBankDropdownOpen] = useState(false); // ?? Custom dropdown toggle state
   const [addForm, setAddForm] = useState({
     amount: "",
     method: "card",
@@ -458,8 +458,8 @@ export default function Dashboard({ userData, onLogout }) {
   });
   const [otp, setOtp] = useState("");
   const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpPurpose, setOtpPurpose] = useState("freeze"); // 🟢 Tracks modal purpose ("freeze" or "transaction")
-  const [pendingTx, setPendingTx] = useState(null); // 🟢 Stores pending transaction info temporarily
+  const [otpPurpose, setOtpPurpose] = useState("freeze"); // ?? Tracks modal purpose ("freeze" or "transaction")
+  const [pendingTx, setPendingTx] = useState(null); // ?? Stores pending transaction info temporarily
   const [showFreezeConfirm, setShowFreezeConfirm] = useState(false);
 
   // New Features State
@@ -477,7 +477,7 @@ export default function Dashboard({ userData, onLogout }) {
   const [showShareFeedModal, setShowShareFeedModal] = useState(false);
   const [shareFeedCaption, setShareFeedCaption] = useState("");
   const [shareFeedVisibility, setShareFeedVisibility] = useState("public");
-  // 🟢 Social Onboarding States
+  // ?? Social Onboarding States
   const [socialStep, setSocialStep] = useState(1); // 1 = Activation Consent, 2 = Choose Username
   const [usernameInput, setUsernameInput] = useState("");
   const [displayNameInput, setDisplayNameInput] = useState("");
@@ -485,7 +485,7 @@ export default function Dashboard({ userData, onLogout }) {
   const [isUsernameAvailable, setIsUsernameAvailable] = useState(false);
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
-  // 🟢 Friends, Public Profile, & Social Feed States
+  // ?? Friends, Public Profile, & Social Feed States
   const [friendSearchQuery, setFriendSearchQuery] = useState("");
   const [friendSearchResults, setFriendSearchResults] = useState([]);
   const [friendSearchLoading, setFriendSearchLoading] = useState(false);
@@ -496,15 +496,15 @@ export default function Dashboard({ userData, onLogout }) {
   // Public Profile and Posts
   const [postVisibility, setPostVisibility] = useState("friends");
   const [selectedPublicUser, setSelectedPublicUser] = useState(null); // Jab hum kisi user ki profile details screen kholenge
-  const [ownPostPrivacyFilter, setOwnPostPrivacyFilter] = useState("public"); // 🟢 Own profile tabs filter state (Default to public)
-  const [showRequestsModal, setShowRequestsModal] = useState(false); // 🟢 Requests popup show/hide control
-  const [activeCommentPost, setActiveCommentPost] = useState(null); // 🟢 Comments bottom sheet control
-  const [commentText, setCommentText] = useState(""); // 🟢 Comment input text field
-  const [commentSubmitting, setCommentSubmitting] = useState(false); // 🟢 Double submission block karne ke liye
-  const [reactionSubmitting, setReactionSubmitting] = useState(false); // 🟢 Prevents duplicate fast reaction clicks
-  const [hoveredPostReactId, setHoveredPostReactId] = useState(null); // 🟢 Reaction picker popup show/hide control
-  const [activeReactionsPost, setActiveReactionsPost] = useState(null); // 🟢 Reactions popup modal control
-  const [reactionsFilterTab, setReactionsFilterTab] = useState("all"); // 🟢 Active reactions filter tab ('all' | 'like' | 'love' etc)
+  const [ownPostPrivacyFilter, setOwnPostPrivacyFilter] = useState("public"); // ?? Own profile tabs filter state (Default to public)
+  const [showRequestsModal, setShowRequestsModal] = useState(false); // ?? Requests popup show/hide control
+  const [activeCommentPost, setActiveCommentPost] = useState(null); // ?? Comments bottom sheet control
+  const [commentText, setCommentText] = useState(""); // ?? Comment input text field
+  const [commentSubmitting, setCommentSubmitting] = useState(false); // ?? Double submission block karne ke liye
+  const [reactionSubmitting, setReactionSubmitting] = useState(false); // ?? Prevents duplicate fast reaction clicks
+  const [hoveredPostReactId, setHoveredPostReactId] = useState(null); // ?? Reaction picker popup show/hide control
+  const [activeReactionsPost, setActiveReactionsPost] = useState(null); // ?? Reactions popup modal control
+  const [reactionsFilterTab, setReactionsFilterTab] = useState("all"); // ?? Active reactions filter tab ('all' | 'like' | 'love' etc)
   const [publicUserPosts, setPublicUserPosts] = useState([]); // Viewed user ke posts display karne ke liye
   const [homeFeedPosts, setHomeFeedPosts] = useState([]); // Main timeline feed posts
   const [postContent, setPostContent] = useState(""); // Status update box content
@@ -538,7 +538,7 @@ export default function Dashboard({ userData, onLogout }) {
   const [qrAmount, setQrAmount] = useState("");
   const [showQrConfirm, setShowQrConfirm] = useState(false);
 
-  // 🟢 Auto-Reset All Forms & Modals when active tab or sub-tab changes (For Security & Premium UX)
+  // ?? Auto-Reset All Forms & Modals when active tab or sub-tab changes (For Security & Premium UX)
   useEffect(() => {
     // 1. Reset Send Money Form
     setSendForm({ recipient: "", amount: "", note: "", recipientName: "" });
@@ -585,14 +585,14 @@ export default function Dashboard({ userData, onLogout }) {
     setShowQrConfirm(false);
 
     // 6. Reset External Bank Form States
-    setExternalForm({ bankName: "", accountNumber: "", amount: "" }); // 👈 Clear input fields
-    setExternalMode("local"); // 👈 Reset to local mode
-    setValidatedAccountHolder(""); // 👈 Clear account holder name
+    setExternalForm({ bankName: "", accountNumber: "", amount: "" }); // ?? Clear input fields
+    setExternalMode("local"); // ?? Reset to local mode
+    setValidatedAccountHolder(""); // ?? Clear account holder name
     setShowExternalConfirm(false);
     setShowFreezeConfirm(false);
-  }, [activeTab, sendType]); // 👈 `sendType` parameter add kiya taake sub-tabs par bhi trigger ho
+  }, [activeTab, sendType]); // ?? `sendType` parameter add kiya taake sub-tabs par bhi trigger ho
 
-  // 🔒 Cleanup camera stream on Dashboard component unmount
+  // ?? Cleanup camera stream on Dashboard component unmount
   useEffect(() => {
     return () => {
       try {
@@ -704,7 +704,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/dashboard",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/dashboard",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -725,7 +725,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/wallet/history", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/wallet/history", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -738,13 +738,13 @@ export default function Dashboard({ userData, onLogout }) {
       setHistoryLoading(false);
     }
   }, []);
-  // 🟢 Create a ref for activeTab so that Socket listener can read its latest value safely
+  // ?? Create a ref for activeTab so that Socket listener can read its latest value safely
   const activeTabRef = useRef(activeTab);
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
 
-  // 🟢 Trigger fetchHistory when user switches to 'history' tab
+  // ?? Trigger fetchHistory when user switches to 'history' tab
   useEffect(() => {
     if (activeTab === "history") {
       fetchHistory();
@@ -754,7 +754,7 @@ export default function Dashboard({ userData, onLogout }) {
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/notifications",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/notifications",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -771,7 +771,7 @@ export default function Dashboard({ userData, onLogout }) {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/profile", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -786,7 +786,7 @@ export default function Dashboard({ userData, onLogout }) {
           nationality: data.nationality,
         });
       } else if (res.status === 401 || res.status === 404) {
-        onLogout(); // 🟢 Token invalid ho ya user deleted ho toh safe log out kar dein
+        onLogout(); // ?? Token invalid ho ya user deleted ho toh safe log out kar dein
       }
     } catch (e) {
       console.error(e);
@@ -797,7 +797,7 @@ export default function Dashboard({ userData, onLogout }) {
     if (!getToken()) return;
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/get-splits",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/get-splits",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -814,11 +814,11 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-  // 🟢 Friends List fetch karna
+  // ?? Friends List fetch karna
   const fetchFriends = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const res = await fetch("http://localhost:5000/api/profile/friends", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile/friends", {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const data = await res.json();
@@ -830,12 +830,12 @@ export default function Dashboard({ userData, onLogout }) {
     }
   }, []);
 
-  // 🟢 Pending incoming friend requests fetch karna
+  // ?? Pending incoming friend requests fetch karna
   const fetchFriendRequests = useCallback(async () => {
     if (!getToken()) return;
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/friend-requests",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/friend-requests",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -851,12 +851,12 @@ export default function Dashboard({ userData, onLogout }) {
 
   const fetchHomeFeed = useCallback(async () => {
     if (!getToken()) {
-      setFeedLoading(false); // 🟢 Token na ho toh loading status band karein
+      setFeedLoading(false); // ?? Token na ho toh loading status band karein
       return;
     }
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/posts/feed",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/posts/feed",
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -877,7 +877,7 @@ export default function Dashboard({ userData, onLogout }) {
     const t = getToken();
     if (!t) return;
     try {
-      const res = await fetch("http://localhost:5000/api/profile/chat/conversations", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile/chat/conversations", {
         headers: { Authorization: `Bearer ${t}` },
       });
       if (res.ok) {
@@ -912,7 +912,7 @@ export default function Dashboard({ userData, onLogout }) {
     });
     setSocialView("messages");
     try {
-      const res = await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+      const res = await fetch(`https://mern-auth1-qnmh.onrender.com/api/profile/chat/${friendId}`, {
         headers: { Authorization: `Bearer ${t}` },
       });
       if (res.ok) {
@@ -931,7 +931,7 @@ export default function Dashboard({ userData, onLogout }) {
     const friendId = chatView.id || chatView._id || chatView.friendId;
     setChatSending(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+      const res = await fetch(`https://mern-auth1-qnmh.onrender.com/api/profile/chat/${friendId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
         body: JSON.stringify({ content: chatInput.trim() }),
@@ -949,7 +949,7 @@ export default function Dashboard({ userData, onLogout }) {
     const t = getToken();
     if (!t || !friendId) return;
     try {
-      await fetch(`http://localhost:5000/api/profile/chat/${friendId}`, {
+      await fetch(`https://mern-auth1-qnmh.onrender.com/api/profile/chat/${friendId}`, {
         headers: { Authorization: `Bearer ${t}` },
       });
       fetchConversations();
@@ -988,7 +988,7 @@ export default function Dashboard({ userData, onLogout }) {
     setMsgSearchResults([]);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/search?q=${encodeURIComponent(msgSearchQuery.trim())}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/search?q=${encodeURIComponent(msgSearchQuery.trim())}`,
         { headers: { Authorization: `Bearer ${getToken()}` } }
       );
       const data = await res.json();
@@ -1007,11 +1007,11 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Kisi specific searched user ke posts fetch karna public profile display ke liye
+  // ?? Kisi specific searched user ke posts fetch karna public profile display ke liye
   const fetchPublicUserPosts = async (userId) => {
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/posts/user/${userId}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/user/${userId}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -1025,7 +1025,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Friends Search Bar submit handler (name + username)
+  // ?? Friends Search Bar submit handler (name + username)
   const handleFriendSearch = async (e) => {
     e?.preventDefault();
     if (!friendSearchQuery.trim()) return;
@@ -1034,7 +1034,7 @@ export default function Dashboard({ userData, onLogout }) {
     setFriendSearchResults([]);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/search?q=${encodeURIComponent(friendSearchQuery.trim())}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/search?q=${encodeURIComponent(friendSearchQuery.trim())}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -1055,7 +1055,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Send Friend Request (Updated with Instant UI Optimistic Update)
+  // ?? Send Friend Request (Updated with Instant UI Optimistic Update)
   const handleSendFriendRequest = async (recipientId) => {
     // 1. Back up current state in case of failure
     const prevSearchResults = friendSearchResults;
@@ -1073,7 +1073,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/friend-request/send",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/friend-request/send",
         {
           method: "POST",
           headers: {
@@ -1124,7 +1124,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Accept Friend Request (Updated with Instant UI Optimistic Update)
+  // ?? Accept Friend Request (Updated with Instant UI Optimistic Update)
   const handleAcceptFriendRequest = async (requestId, senderName) => {
     // 1. Back up current states
     const prevSearchResults = friendSearchResults;
@@ -1163,7 +1163,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/friend-request/accept",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/friend-request/accept",
         {
           method: "POST",
           headers: {
@@ -1175,14 +1175,14 @@ export default function Dashboard({ userData, onLogout }) {
       );
       if (res.ok) {
         setToast({
-          title: "Accepted 🎉",
+          title: "Accepted ??",
           msg: `You are now friends with ${senderName}!`,
           type: "success",
         });
         fetchFriendRequests();
         fetchFriends();
         fetchHomeFeed();
-        // 🟢 User Profile page ke posts ko foran refresh karein
+        // ?? User Profile page ke posts ko foran refresh karein
         if (senderId) {
           fetchPublicUserPosts(senderId);
         }
@@ -1207,8 +1207,8 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
-  // 🟢 Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
+  // ?? Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
+  // ?? Reject / Cancel Friend Request (Updated with Instant UI Optimistic Update)
   const handleRejectFriendRequest = async (requestId) => {
     // 1. Back up current states
     const prevSearchResults = friendSearchResults;
@@ -1242,7 +1242,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/friend-request/reject",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/friend-request/reject",
         {
           method: "POST",
           headers: {
@@ -1279,11 +1279,11 @@ export default function Dashboard({ userData, onLogout }) {
       });
     }
   };
-  // 🟢 Unfriend / Remove Friend
+  // ?? Unfriend / Remove Friend
   const handleRemoveFriend = async (friendId, friendName) => {
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/friend/remove",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/friend/remove",
         {
           method: "POST",
           headers: {
@@ -1308,7 +1308,7 @@ export default function Dashboard({ userData, onLogout }) {
         );
         if (selectedPublicUser && selectedPublicUser.id === friendId) {
           setSelectedPublicUser((prev) => ({ ...prev, status: "NONE" }));
-          fetchPublicUserPosts(friendId); // 🟢 User Profile page ke posts ko foran refresh karein
+          fetchPublicUserPosts(friendId); // ?? User Profile page ke posts ko foran refresh karein
         }
       } else {
         const data = await res.json();
@@ -1323,12 +1323,12 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Create status post handler
+  // ?? Create status post handler
   const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!postContent.trim()) return;
     try {
-      const res = await fetch("http://localhost:5000/api/profile/posts", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1348,7 +1348,7 @@ export default function Dashboard({ userData, onLogout }) {
         setPostContent("");
         fetchHomeFeed();
 
-        // 🟢 Agar hum apni hi profile ("SELF") par khare hain toh profile timeline refresh karein
+        // ?? Agar hum apni hi profile ("SELF") par khare hain toh profile timeline refresh karein
         if (selectedPublicUser && selectedPublicUser.status === "SELF") {
           fetchPublicUserPosts(selectedPublicUser.id);
         }
@@ -1365,8 +1365,8 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Handle Comment Submission
-  // 🟢 Handle Comment Submission (Secure with Duplication & Script Protection)
+  // ?? Handle Comment Submission
+  // ?? Handle Comment Submission (Secure with Duplication & Script Protection)
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
 
@@ -1399,10 +1399,10 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
 
-    setCommentSubmitting(true); // 🟢 Block further clicks immediately
+    setCommentSubmitting(true); // ?? Block further clicks immediately
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/posts/${activeCommentPost._id}/comment`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${activeCommentPost._id}/comment`,
         {
           method: "POST",
           headers: {
@@ -1425,17 +1425,17 @@ export default function Dashboard({ userData, onLogout }) {
         type: "error",
       });
     } finally {
-      setCommentSubmitting(false); // 🟢 Release click block
+      setCommentSubmitting(false); // ?? Release click block
     }
   };
 
-  // 🟢 Handle Post Reaction (React, Update, or Toggle Off)
+  // ?? Handle Post Reaction (React, Update, or Toggle Off)
   const handlePostReact = async (postId, type) => {
     if (reactionSubmitting) return; // Prevent fast consecutive clicks
     setReactionSubmitting(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/posts/${postId}/react`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}/react`,
         {
           method: "POST",
           headers: {
@@ -1462,7 +1462,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Handle Social notification click (Opens post comments instantly)
+  // ?? Handle Social notification click (Opens post comments instantly)
   const handleSocialNotificationClick = async (notif) => {
     // Mark as read natively
     if (!notif.isRead) {
@@ -1473,14 +1473,14 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/posts/${notif.metadata.postId}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${notif.metadata.postId}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
       );
       const data = await res.json();
       if (res.ok) {
-        setActiveCommentPost(data); // 🟢 Set active post to show comments sheet
+        setActiveCommentPost(data); // ?? Set active post to show comments sheet
         setCommentText("");
       }
     } catch (e) {
@@ -1504,7 +1504,7 @@ export default function Dashboard({ userData, onLogout }) {
         date: receiptData.date,
       })}`;
 
-      const res = await fetch("http://localhost:5000/api/profile/posts", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1521,14 +1521,14 @@ export default function Dashboard({ userData, onLogout }) {
         setShowShareFeedModal(false);
         setShareFeedCaption("");
         setToast({
-          title: "Shared successfully ✅",
+          title: "Shared successfully ?",
           msg: "Receipt shared to Wallexa Feed!",
           type: "success",
         });
         fetchHomeFeed();
       } else {
         setToast({
-          title: "Share Failed ❌",
+          title: "Share Failed ?",
           msg: data.message || "Could not share post.",
           type: "error",
         });
@@ -1536,7 +1536,7 @@ export default function Dashboard({ userData, onLogout }) {
     } catch (err) {
       console.error(err);
       setToast({
-        title: "Error ❌",
+        title: "Error ?",
         msg: "Failed to share due to connection error.",
         type: "error",
       });
@@ -1576,10 +1576,10 @@ export default function Dashboard({ userData, onLogout }) {
       }
     });
 
-    // 👤 Real-time Friend Request Received
+    // ?? Real-time Friend Request Received
     newSocket.on("friend_request_received", (data) => {
       setToast({
-        title: "New Friend Request 👤",
+        title: "New Friend Request ??",
         msg: `${data.sender.firstName} sent you a friend request!`,
         type: "info",
       });
@@ -1594,10 +1594,10 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-    // 🎉 Real-time Friend Request Accepted
+    // ?? Real-time Friend Request Accepted
     newSocket.on("friend_request_accepted", (data) => {
       setToast({
-        title: "Request Accepted 🎉",
+        title: "Request Accepted ??",
         msg: `${data.friend.firstName} accepted your friend request!`,
         type: "success",
       });
@@ -1615,28 +1615,28 @@ export default function Dashboard({ userData, onLogout }) {
 
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.friend.id) {
-          fetchPublicUserPosts(data.friend.id); // 🟢 User Profile page ko update karein
+          fetchPublicUserPosts(data.friend.id); // ?? User Profile page ko update karein
           return { ...prev, status: "FRIENDS" };
         }
         return prev;
       });
     });
 
-    // 💔 Real-time Unfriend (Dosti khatam)
+    // ?? Real-time Unfriend (Dosti khatam)
     newSocket.on("friend_removed", (data) => {
       fetchFriends();
       fetchHomeFeed();
 
       setSelectedPublicUser((prev) => {
         if (prev && prev.id === data.friendId) {
-          fetchPublicUserPosts(data.friendId); // 🟢 User Profile page ko update karein
+          fetchPublicUserPosts(data.friendId); // ?? User Profile page ko update karein
           return { ...prev, status: "NONE" };
         }
         return prev;
       });
     });
 
-    // ❌ Real-time Friend Request Rejected / Cancelled (Naya Code)
+    // ? Real-time Friend Request Rejected / Cancelled (Naya Code)
     newSocket.on("friend_request_rejected", (data) => {
       fetchFriendRequests(); // Requests list refresh karo
 
@@ -1652,7 +1652,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-    // 📢 Real-time Post Creation (Social Feed Instant Update - Naya Code)
+    // ?? Real-time Post Creation (Social Feed Instant Update - Naya Code)
     newSocket.on("post_created", (data) => {
       // Agar main khud author hoon, toh refresh karne ki zaroorat nahi hai
       if (data.authorId === userId) return;
@@ -1679,7 +1679,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-    // 💬 Real-time Comment Addition (Instant UI update!)
+    // ?? Real-time Comment Addition (Instant UI update!)
     newSocket.on("comment_added", (data) => {
       // 1. Home Feed posts update
       setHomeFeedPosts((prev) =>
@@ -1716,7 +1716,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-    // 🌟 Real-time Post Reaction update
+    // ?? Real-time Post Reaction update
     newSocket.on("post_reacted", (data) => {
       // 1. Home feed posts refresh
       setHomeFeedPosts((prev) =>
@@ -1755,7 +1755,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
     });
 
-    // 🚫 Real-time Deactivation (Clear deactivated user's posts instantly - Naya Code)
+    // ?? Real-time Deactivation (Clear deactivated user's posts instantly - Naya Code)
     newSocket.on("social_deactivated", (data) => {
       const stripUserFromPosts = (posts) =>
         posts.map((post) => ({
@@ -1822,7 +1822,7 @@ export default function Dashboard({ userData, onLogout }) {
             setChatMessages((prev) =>
               prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]
             );
-            // Chat khuli hai aur msg saamne wale ne bheja → read mark
+            // Chat khuli hai aur msg saamne wale ne bheja ? read mark
             if (senderId === fid && senderId !== myId) {
               markChatAsRead(fid);
             }
@@ -1858,7 +1858,7 @@ export default function Dashboard({ userData, onLogout }) {
     markChatAsRead,
   ]);
 
-  // 🟢 Safepay/Stripe Callback URL Parameters check (Wait until profile is loaded from backend)
+  // ?? Safepay/Stripe Callback URL Parameters check (Wait until profile is loaded from backend)
   useEffect(() => {
     if (!profile) return; // Wait until profile loads from backend
 
@@ -1887,13 +1887,13 @@ export default function Dashboard({ userData, onLogout }) {
         }
 
         setToast({
-          title: "Success ✅",
+          title: "Success ?",
           msg: paymentMessage || "Money added successfully to your wallet!",
           type: "success",
         });
       } else {
         setToast({
-          title: "Failed ❌",
+          title: "Failed ?",
           msg: paymentMessage || "Payment failed or cancelled.",
           type: "error",
         });
@@ -1914,7 +1914,7 @@ export default function Dashboard({ userData, onLogout }) {
   const markAsRead = async (notificationId) => {
     try {
       await fetch(
-        "http://localhost:5000/api/wallet/mark-notification-read",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/mark-notification-read",
         {
           method: "POST",
           headers: {
@@ -1971,7 +1971,7 @@ export default function Dashboard({ userData, onLogout }) {
     try {
       // 1. Account validation API ko hit karein holder name ke liye
       const res = await fetch(
-        "http://localhost:5000/api/wallet/validate-external-account",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/validate-external-account",
         {
           method: "POST",
           headers: {
@@ -1993,14 +1993,14 @@ export default function Dashboard({ userData, onLogout }) {
         setShowExternalConfirm(true);
       } else {
         setToast({
-          title: "Validation Failed ❌",
+          title: "Validation Failed ?",
           msg: data.message || "Account not found.",
           type: "error",
         });
       }
     } catch (err) {
       setToast({
-        title: "Network Error ❌",
+        title: "Network Error ?",
         msg: "Verification failed.",
         type: "error",
       });
@@ -2016,7 +2016,7 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
 
-    // 🛡️ Self-send check: Apne number par paise bejne se rokna
+    // ??? Self-send check: Apne number par paise bejne se rokna
     if (profile?.mobileNumber && sendForm.recipient === profile.mobileNumber) {
       setSendForm((prev) => ({
         ...prev,
@@ -2032,7 +2032,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/mobile/${sendForm.recipient}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/mobile/${sendForm.recipient}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -2058,7 +2058,7 @@ export default function Dashboard({ userData, onLogout }) {
         type: "error",
       });
 
-    // 🛡️ Final Check: Block self-send
+    // ??? Final Check: Block self-send
     if (profile?.mobileNumber && sendForm.recipient === profile.mobileNumber) {
       return setToast({
         title: "Error",
@@ -2079,7 +2079,7 @@ export default function Dashboard({ userData, onLogout }) {
       }
       try {
         const res = await fetch(
-          `http://localhost:5000/api/profile/mobile/${sendForm.recipient}`,
+          `https://mern-auth1-qnmh.onrender.com/api/profile/mobile/${sendForm.recipient}`,
           {
             headers: { Authorization: `Bearer ${getToken()}` },
           },
@@ -2142,7 +2142,7 @@ export default function Dashboard({ userData, onLogout }) {
     try {
       // 1. Backend API ko hit karein to create Stripe Session
       const res = await fetch(
-        "http://127.0.0.1:5000/api/wallet/stripe-initiate",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/stripe-initiate",
         {
           method: "POST",
           headers: {
@@ -2175,8 +2175,8 @@ export default function Dashboard({ userData, onLogout }) {
 
   const requestFreeze = async () => {
     try {
-      setOtpPurpose("freeze"); // 🟢 Purpose freeze set karein taake modal ko pata chale
-      await fetch("http://localhost:5000/api/auth/send-freeze-otp", {
+      setOtpPurpose("freeze"); // ?? Purpose freeze set karein taake modal ko pata chale
+      await fetch("https://mern-auth1-qnmh.onrender.com/api/auth/send-freeze-otp", {
         method: "POST",
         headers: { Authorization: `Bearer ${getToken()}` },
       });
@@ -2189,7 +2189,7 @@ export default function Dashboard({ userData, onLogout }) {
   const confirmFreeze = async () => {
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/verify-freeze-otp",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/verify-freeze-otp",
         {
           method: "POST",
           headers: {
@@ -2229,7 +2229,7 @@ export default function Dashboard({ userData, onLogout }) {
 
       // Set backend endpoint & payload parameters dynamically
       if (pendingTx.type === "send-money" || pendingTx.type === "qr-send") {
-        url = "http://localhost:5000/api/wallet/send-money";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/send-money";
         bodyData = {
           recipientMobile: pendingTx.recipientMobile,
           amount: pendingTx.amount,
@@ -2237,19 +2237,19 @@ export default function Dashboard({ userData, onLogout }) {
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "pay-bill") {
-        url = "http://localhost:5000/api/wallet/pay-selected-bills";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/pay-selected-bills";
         bodyData = {
           invoiceIds: pendingTx.invoiceIds,
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "accept-split") {
-        url = "http://localhost:5000/api/wallet/accept-split";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/accept-split";
         bodyData = {
           splitId: pendingTx.splitId,
           transactionPin: transactionPinCode,
         };
       } else if (pendingTx.type === "external-transfer") {
-        url = "http://localhost:5000/api/wallet/send-external-money";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/send-external-money";
         bodyData = {
           bankName: pendingTx.bankName,
           accountNumber: pendingTx.accountNumber,
@@ -2407,7 +2407,7 @@ export default function Dashboard({ userData, onLogout }) {
           fetchNotifications();
 
           setToast({
-            title: "Transaction Successful ✅",
+            title: "Transaction Successful ?",
             msg: data.message || "Completed successfully.",
             type: "success",
           });
@@ -2424,7 +2424,7 @@ export default function Dashboard({ userData, onLogout }) {
 
           // Screen par account freeze ka error alert dikhayein
           setToast({
-            title: "Account Frozen ❄️",
+            title: "Account Frozen ??",
             msg: errMsg,
             type: "error",
           });
@@ -2442,7 +2442,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Confirm and complete any large transaction using OTP dynamically
+  // ?? Confirm and complete any large transaction using OTP dynamically
   const confirmTransactionWithOtp = async () => {
     if (!pendingTx) return;
     setLoading(true);
@@ -2452,7 +2452,7 @@ export default function Dashboard({ userData, onLogout }) {
 
       // Route parameters dynamically based on transaction type (including verified PIN)
       if (pendingTx.type === "send-money" || pendingTx.type === "qr-send") {
-        url = "http://localhost:5000/api/wallet/send-money";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/send-money";
         bodyData = {
           recipientMobile: pendingTx.recipientMobile,
           amount: pendingTx.amount,
@@ -2461,21 +2461,21 @@ export default function Dashboard({ userData, onLogout }) {
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "pay-bill") {
-        url = "http://localhost:5000/api/wallet/pay-selected-bills";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/pay-selected-bills";
         bodyData = {
           invoiceIds: pendingTx.invoiceIds,
           otp,
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "accept-split") {
-        url = "http://localhost:5000/api/wallet/accept-split";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/accept-split";
         bodyData = {
           splitId: pendingTx.splitId,
           otp,
           transactionPin: verifiedPin,
         };
       } else if (pendingTx.type === "external-transfer") {
-        url = "http://localhost:5000/api/wallet/send-external-money";
+        url = "https://mern-auth1-qnmh.onrender.com/api/wallet/send-external-money";
         bodyData = {
           bankName: pendingTx.bankName,
           accountNumber: pendingTx.accountNumber,
@@ -2663,7 +2663,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/change-pin/verify-current",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/change-pin/verify-current",
         {
           method: "POST",
           headers: {
@@ -2705,7 +2705,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/forgot-pin/verify-password",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/forgot-pin/verify-password",
         {
           method: "POST",
           headers: {
@@ -2768,7 +2768,7 @@ export default function Dashboard({ userData, onLogout }) {
     setForgotPinLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/forgot-pin/reset",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/forgot-pin/reset",
         {
           method: "POST",
           headers: {
@@ -2799,7 +2799,7 @@ export default function Dashboard({ userData, onLogout }) {
         fetchData();
 
         setToast({
-          title: "PIN Reset Successful ✅",
+          title: "PIN Reset Successful ?",
           msg: "Your transaction PIN has been reset and your wallet is now active.",
           type: "success",
         });
@@ -2814,7 +2814,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Handles redirection when user clicks submit inside OTP Modal
+  // ?? Handles redirection when user clicks submit inside OTP Modal
   const handleOtpSubmit = () => {
     if (otpPurpose === "transaction") {
       confirmTransactionWithOtp();
@@ -2828,7 +2828,7 @@ export default function Dashboard({ userData, onLogout }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/profile/update", {
+      const res = await fetch("https://mern-auth1-qnmh.onrender.com/api/profile/update", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -2872,7 +2872,7 @@ export default function Dashboard({ userData, onLogout }) {
       const base64 = reader.result;
       try {
         const res = await fetch(
-          "http://localhost:5000/api/profile/upload-picture",
+          "https://mern-auth1-qnmh.onrender.com/api/profile/upload-picture",
           {
             method: "POST",
             headers: {
@@ -2949,14 +2949,14 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        // 🌟 Niche 'XXXX' ki jagah apna IP (jaise localhost ya network IP) likhein
-        `http://localhost:5000/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`, // Add your IP here
+        // ?? Niche 'XXXX' ki jagah apna IP (jaise localhost ya network IP) likhein
+        `https://mern-auth1-qnmh.onrender.com/api/wallet/fetch-bills?billType=${encodeURIComponent(billForm.billType)}&consumerNumber=${billForm.consumerNumber}`, // Add your IP here
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
       const data = await res.json();
       if (res.ok) {
         setActiveInvoices(data.invoices);
-        setBillOwnerName(data.ownerName); // 🟢 Verified name ko humne memory notebook mein save kar liya!
+        setBillOwnerName(data.ownerName); // ?? Verified name ko humne memory notebook mein save kar liya!
         setSelectedInvoiceIds([]);
         setBillFetched(true);
         setToast({
@@ -2974,7 +2974,7 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Live Username verification & cleaning
+  // ?? Live Username verification & cleaning
   const handleUsernameChange = async (val) => {
     // Semicolons aur special characters ko type karte waqt hi automatically strip (delete) kar dena!
     const cleanVal = val
@@ -2998,9 +2998,9 @@ export default function Dashboard({ userData, onLogout }) {
     setUsernameChecking(true);
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/check-username/${cleanVal}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/check-username/${cleanVal}`,
         {
-          // 🌟 Niche IP update rakhiyega
+          // ?? Niche IP update rakhiyega
           headers: { Authorization: `Bearer ${getToken()}` },
         },
       );
@@ -3017,17 +3017,17 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  // 🟢 Finalize & Save username to database
-  // 🟢 Finalize & Save username & displayName to database
+  // ?? Finalize & Save username to database
+  // ?? Finalize & Save username & displayName to database
   const handleSaveUsername = async (e) => {
     e.preventDefault();
     if (!isUsernameAvailable) return;
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/set-username",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/set-username",
         {
-          // 🌟 Niche IP update rakhiyega
+          // ?? Niche IP update rakhiyega
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -3036,7 +3036,7 @@ export default function Dashboard({ userData, onLogout }) {
           body: JSON.stringify({
             username: usernameInput,
             displayName: displayNameInput,
-          }), // 🟢 Send displayName too
+          }), // ?? Send displayName too
         },
       );
       const data = await res.json();
@@ -3062,7 +3062,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/deactivate-social",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/deactivate-social",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${getToken()}` },
@@ -3091,12 +3091,12 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
 
-  // 🟢 Deactivate Social Profile (Delete username & displayName)
+  // ?? Deactivate Social Profile (Delete username & displayName)
     const confirmActivateSocial = async () => {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/profile/activate-social",
+        "https://mern-auth1-qnmh.onrender.com/api/profile/activate-social",
         {
           method: "POST",
           headers: { Authorization: `Bearer ${getToken()}` },
@@ -3132,7 +3132,7 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
 
-    // 🛡️ Check 1: Apna number add karne se rokna
+    // ??? Check 1: Apna number add karne se rokna
     if (profile?.mobileNumber && mobileNumber === profile.mobileNumber) {
       const newFriends = [...splitForm.friends];
       newFriends[index].name = "You cannot add yourself";
@@ -3145,7 +3145,7 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
 
-    // 🛡️ Check 2: Duplicate number add karne se rokna
+    // ??? Check 2: Duplicate number add karne se rokna
     const isDuplicate = splitForm.friends.some(
       (f, i) => i !== index && f.mobileNumber === mobileNumber,
     );
@@ -3163,7 +3163,7 @@ export default function Dashboard({ userData, onLogout }) {
 
     try {
       const res = await fetch(
-        `http://localhost:5000/api/profile/mobile/${mobileNumber}`,
+        `https://mern-auth1-qnmh.onrender.com/api/profile/mobile/${mobileNumber}`,
         {
           headers: { Authorization: `Bearer ${getToken()}` },
         },
@@ -3204,7 +3204,7 @@ export default function Dashboard({ userData, onLogout }) {
       });
     }
 
-    // 🛡️ Check: Custom split me kisi bhi friend ki amount 0 ya negative nahi honi chahiye
+    // ??? Check: Custom split me kisi bhi friend ki amount 0 ya negative nahi honi chahiye
     if (splitForm.isCustom) {
       const hasZeroOrInvalid = validFriends.some(
         (f) => Number(f.amount || 0) <= 0,
@@ -3217,7 +3217,7 @@ export default function Dashboard({ userData, onLogout }) {
         });
       }
 
-      // 🛡️ Check: Custom splits ka total sum total bill amount se zyada nahi hona chahiye
+      // ??? Check: Custom splits ka total sum total bill amount se zyada nahi hona chahiye
       const totalCustomSum = validFriends.reduce(
         (sum, f) => sum + Number(f.amount || 0),
         0,
@@ -3246,7 +3246,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/request-split",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/request-split",
         {
           method: "POST",
           headers: {
@@ -3296,7 +3296,7 @@ export default function Dashboard({ userData, onLogout }) {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/reject-split",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/reject-split",
         {
           method: "POST",
           headers: {
@@ -3381,7 +3381,7 @@ export default function Dashboard({ userData, onLogout }) {
             fontSize: "0.9rem",
           }}
         >
-          <span>🔑</span>
+          <span>??</span>
           <div>
             <strong>Security Action Required:</strong> You must reset your
             transaction PIN from your Profile tab before you can make any
@@ -3394,7 +3394,7 @@ export default function Dashboard({ userData, onLogout }) {
         <span className="balance-label">Total Balance</span>
         <h2 className="balance-amount">
           {isFrozen
-            ? "❄️ FROZEN"
+            ? "?? FROZEN"
             : showBalance
               ? `PKR ${balance.toLocaleString()}`
               : "****"}
@@ -3475,7 +3475,7 @@ export default function Dashboard({ userData, onLogout }) {
           }}
           onClick={() => setSendType("wallexa")}
         >
-          📱 Send to Wallexa
+          ?? Send to Wallexa
         </button>
         <button
           type="button"
@@ -3502,7 +3502,7 @@ export default function Dashboard({ userData, onLogout }) {
           }}
           onClick={() => setSendType("external")}
         >
-          🏦 External Bank
+          ?? External Bank
         </button>
       </div>
 
@@ -3559,7 +3559,7 @@ export default function Dashboard({ userData, onLogout }) {
       {/* Option 2: Send to External Bank */}
       {sendType === "external" && (
         <div className="mt-4" style={{ animation: "fadeIn 0.3s ease" }}>
-          {/* 🟢 Mode Selector Buttons Group */}
+          {/* ?? Mode Selector Buttons Group */}
           <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
             <button
               type="button"
@@ -3613,7 +3613,7 @@ export default function Dashboard({ userData, onLogout }) {
                 transition: "all 0.2s ease",
               }}
             >
-              💳 Stripe Payout
+              ?? Stripe Payout
             </button>
           </div>
 
@@ -3649,9 +3649,9 @@ export default function Dashboard({ userData, onLogout }) {
                       alignItems: "center",
                     }}
                   >
-                    <span>{externalForm.bankName || "Select Bank 🏦"}</span>
+                    <span>{externalForm.bankName || "Select Bank ??"}</span>
                     <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
-                      {bankDropdownOpen ? "▲" : "▼"}
+                      {bankDropdownOpen ? "?" : "?"}
                     </span>
                   </div>
 
@@ -3673,56 +3673,56 @@ export default function Dashboard({ userData, onLogout }) {
                       }}
                     >
                       {[
-                        { value: "", label: "Select Bank 🏦" },
-                        { value: "Meezan Bank", label: "Meezan Bank 🏦" },
+                        { value: "", label: "Select Bank ??" },
+                        { value: "Meezan Bank", label: "Meezan Bank ??" },
                         {
                           value: "HBL Bank",
-                          label: "Habib Bank Limited (HBL) 🏦",
+                          label: "Habib Bank Limited (HBL) ??",
                         },
                         {
                           value: "United Bank Limited (UBL)",
-                          label: "United Bank Limited (UBL) 🏦",
+                          label: "United Bank Limited (UBL) ??",
                         },
                         {
                           value: "National Bank of Pakistan (NBP)",
-                          label: "National Bank of Pakistan (NBP) 🏦",
+                          label: "National Bank of Pakistan (NBP) ??",
                         },
                         {
                           value: "Allied Bank Limited (ABL)",
-                          label: "Allied Bank Limited (ABL) 🏦",
+                          label: "Allied Bank Limited (ABL) ??",
                         },
-                        { value: "Bank Alfalah", label: "Bank Alfalah 🏦" },
-                        { value: "MCB Bank", label: "MCB Bank 🏦" },
+                        { value: "Bank Alfalah", label: "Bank Alfalah ??" },
+                        { value: "MCB Bank", label: "MCB Bank ??" },
                         {
                           value: "Habib Metropolitan Bank",
-                          label: "Habib Metropolitan Bank 🏦",
+                          label: "Habib Metropolitan Bank ??",
                         },
-                        { value: "Soneri Bank", label: "Soneri Bank 🏦" },
-                        { value: "Askari Bank", label: "Askari Bank 🏦" },
-                        { value: "Faysal Bank", label: "Faysal Bank 🏦" },
-                        { value: "Bank Al Habib", label: "Bank Al Habib 🏦" },
+                        { value: "Soneri Bank", label: "Soneri Bank ??" },
+                        { value: "Askari Bank", label: "Askari Bank ??" },
+                        { value: "Faysal Bank", label: "Faysal Bank ??" },
+                        { value: "Bank Al Habib", label: "Bank Al Habib ??" },
                         {
                           value: "The Bank of Punjab (BOP)",
-                          label: "The Bank of Punjab (BOP) 🏦",
+                          label: "The Bank of Punjab (BOP) ??",
                         },
-                        { value: "JS Bank", label: "JS Bank 🏦" },
+                        { value: "JS Bank", label: "JS Bank ??" },
                         {
                           value: "Standard Chartered Bank (SCB)",
-                          label: "Standard Chartered Bank (SCB) 🏦",
+                          label: "Standard Chartered Bank (SCB) ??",
                         },
                         {
                           value: "BankIslami Pakistan",
-                          label: "BankIslami Pakistan 🏦",
+                          label: "BankIslami Pakistan ??",
                         },
                         {
                           value: "Dubai Islamic Bank (DIB)",
-                          label: "Dubai Islamic Bank (DIB) 🏦",
+                          label: "Dubai Islamic Bank (DIB) ??",
                         },
-                        { value: "Al Baraka Bank", label: "Al Baraka Bank 🏦" },
-                        { value: "Easypaisa", label: "Easypaisa 📱" },
-                        { value: "JazzCash", label: "JazzCash 📱" },
-                        { value: "NayaPay", label: "NayaPay 📱" },
-                        { value: "SadaPay", label: "SadaPay 📱" },
+                        { value: "Al Baraka Bank", label: "Al Baraka Bank ??" },
+                        { value: "Easypaisa", label: "Easypaisa ??" },
+                        { value: "JazzCash", label: "JazzCash ??" },
+                        { value: "NayaPay", label: "NayaPay ??" },
+                        { value: "SadaPay", label: "SadaPay ??" },
                       ].map((bank) => (
                         <div
                           key={bank.value}
@@ -3780,7 +3780,7 @@ export default function Dashboard({ userData, onLogout }) {
                   disabled
                 >
                   <option value="Stripe Sandbox Bank">
-                    Stripe Sandbox Bank 💳
+                    Stripe Sandbox Bank ??
                   </option>
                 </select>
               )}
@@ -3815,8 +3815,8 @@ export default function Dashboard({ userData, onLogout }) {
                 }}
               >
                 {externalMode === "local"
-                  ? "🔒 Account will be verified instantly against our local simulated registry."
-                  : "🔒 Account will be validated in real-time via Stripe Sandbox API."}
+                  ? "?? Account will be verified instantly against our local simulated registry."
+                  : "?? Account will be validated in real-time via Stripe Sandbox API."}
               </p>
             </div>
 
@@ -3888,7 +3888,7 @@ export default function Dashboard({ userData, onLogout }) {
               background: "rgba(255,255,255,0.02)",
             }}
           >
-            🔒 Payments are processed securely in PKR via **Safepay Checkout
+            ?? Payments are processed securely in PKR via **Safepay Checkout
             Portal**. You will be redirected to complete your payment.
           </p>
         </div>
@@ -3918,7 +3918,7 @@ export default function Dashboard({ userData, onLogout }) {
         </div>
       );
     }
-        // 2b. DEACTIVATED ACCOUNT SCREEN (pause — data safe, can reactivate)
+        // 2b. DEACTIVATED ACCOUNT SCREEN (pause � data safe, can reactivate)
     if (profile.username && profile.socialActive === false) {
       return (
         <div className="view-container">
@@ -4010,7 +4010,7 @@ export default function Dashboard({ userData, onLogout }) {
                   className="primary-button"
                   onClick={() => setSocialStep(2)}
                 >
-                  🚀 Activate Social Feed
+                  ?? Activate Social Feed
                 </button>
               </div>
             ) : (
@@ -4036,7 +4036,7 @@ export default function Dashboard({ userData, onLogout }) {
                   search you using this unique username.
                 </p>
 
-                {/* 🟢 Display Name Input */}
+                {/* ?? Display Name Input */}
                 <div className="form-group" style={{ marginBottom: "15px" }}>
                   <input
                     className="form-input"
@@ -4091,12 +4091,12 @@ export default function Dashboard({ userData, onLogout }) {
                     )}
                     {isUsernameAvailable && (
                       <span style={{ color: "#10b981", fontWeight: 600 }}>
-                        ✓ Username is available!
+                        ? Username is available!
                       </span>
                     )}
                     {usernameError && (
                       <span style={{ color: "#ef4444" }}>
-                        ✗ {usernameError}
+                        ? {usernameError}
                       </span>
                     )}
                   </div>
@@ -4152,7 +4152,7 @@ export default function Dashboard({ userData, onLogout }) {
                 setPublicUserPosts([]);
               }}
             >
-              ← Back to Feed
+              ? Back to Feed
             </button>
             <h2 className="page-title" style={{ margin: 0 }}>
               User Profile
@@ -4337,7 +4337,7 @@ export default function Dashboard({ userData, onLogout }) {
   isFriend: true,
 })}
                   >
-                    💬 Message
+                    ?? Message
                   </button>
 
                   {/* UNFRIEND BUTTON */}
@@ -4391,7 +4391,7 @@ export default function Dashboard({ userData, onLogout }) {
                     width: "100%",
                   }}
                 >
-                  🗑️ Deactivate Social
+                  ??? Deactivate Social
                 </button>
               )}
 
@@ -4495,7 +4495,7 @@ export default function Dashboard({ userData, onLogout }) {
             </div>
           </div>
 
-          {/* 👥 My Friends List Section (With Hide/Show & Modern UI) */}
+          {/* ?? My Friends List Section (With Hide/Show & Modern UI) */}
           {selectedPublicUser.status === "SELF" && friendsList.length > 0 && (
             <div style={{ marginBottom: "25px" }}>
               {/* My Friends tab toggle */}
@@ -4525,7 +4525,7 @@ export default function Dashboard({ userData, onLogout }) {
                   })
                 }
               >
-                👥 My Friends ({friendsList.length})
+                ?? My Friends ({friendsList.length})
               </button>
 
               {/* Friends list (shown when showFriends tab is active) */}
@@ -4615,7 +4615,7 @@ export default function Dashboard({ userData, onLogout }) {
                         onClick={(e) => { e.stopPropagation(); openChatWith({ id: friend._id, firstName: friend.firstName, lastName: friend.lastName, username: friend.username, profilePicture: friend.profilePicture }); }}
                         style={{ background: "#6366f1", color: "#ffffff", border: "none", borderRadius: "8px", padding: "6px 14px", fontSize: "0.82rem", cursor: "pointer", fontWeight: 600, boxShadow: "0 2px 8px rgba(99,102,241,0.35)" }}
                       >
-                        💬 Chat
+                        ?? Chat
                       </button>
                     </div>
                   ))}
@@ -4624,7 +4624,7 @@ export default function Dashboard({ userData, onLogout }) {
             </div>
           )}
 
-          {/* 🟢 3 Privacy Tabs: Public, Friends Only, Private (Visible only on own profile "SELF") */}
+          {/* ?? 3 Privacy Tabs: Public, Friends Only, Private (Visible only on own profile "SELF") */}
           {selectedPublicUser.status === "SELF" && (
             <div
               style={{
@@ -4680,7 +4680,7 @@ export default function Dashboard({ userData, onLogout }) {
             </h4>
 
             {(() => {
-              // 🟢 Agar apni profile ("SELF") hai toh selected tab ke mutabiq filter karein, warna normal posts dikhayein
+              // ?? Agar apni profile ("SELF") hai toh selected tab ke mutabiq filter karein, warna normal posts dikhayein
               const displayedPosts =
                 selectedPublicUser.status === "SELF"
                   ? publicUserPosts.filter(
@@ -4782,10 +4782,10 @@ export default function Dashboard({ userData, onLogout }) {
                         }}
                       >
                         {post.visibility === "public"
-                          ? "🌍 Public"
+                          ? "?? Public"
                           : post.visibility === "friends"
-                            ? "👥 Friends"
-                            : "🔒 Private"}
+                            ? "?? Friends"
+                            : "?? Private"}
                       </div>
                     </div>
                     <p
@@ -4831,11 +4831,11 @@ export default function Dashboard({ userData, onLogout }) {
                             .slice(0, 3)
                             .map((type) => {
                               const emojis = {
-                                like: "👍",
-                                love: "❤️",
-                                haha: "😆",
-                                sad: "😢",
-                                angry: "😡",
+                                like: "??",
+                                love: "??",
+                                haha: "??",
+                                sad: "??",
+                                angry: "??",
                               };
                               return emojis[type];
                             })
@@ -4848,7 +4848,7 @@ export default function Dashboard({ userData, onLogout }) {
                       </div>
                     )}
 
-                    {/* 🟢 Post Action Footer (React & Comment Buttons) */}
+                    {/* ?? Post Action Footer (React & Comment Buttons) */}
                     <div
                       style={{
                         display: "flex",
@@ -4872,11 +4872,11 @@ export default function Dashboard({ userData, onLogout }) {
                               (r) => (r.user._id || r.user) === userId,
                             );
                           const emojiMap = {
-                            like: "👍",
-                            love: "❤️",
-                            haha: "😆",
-                            sad: "😢",
-                            angry: "😡",
+                            like: "??",
+                            love: "??",
+                            haha: "??",
+                            sad: "??",
+                            angry: "??",
                           };
                           const labelMap = {
                             like: "Like",
@@ -4919,7 +4919,7 @@ export default function Dashboard({ userData, onLogout }) {
                               >
                                 {myReaction
                                   ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
-                                  : "👍 React"}
+                                  : "?? React"}
                               </button>
 
                               {/* Hover Reactions Popup */}
@@ -4943,11 +4943,11 @@ export default function Dashboard({ userData, onLogout }) {
                                   {["like", "love", "haha", "sad", "angry"].map(
                                     (type) => {
                                       const emojis = {
-                                        like: "👍",
-                                        love: "❤️",
-                                        haha: "😆",
-                                        sad: "😢",
-                                        angry: "😡",
+                                        like: "??",
+                                        love: "??",
+                                        haha: "??",
+                                        sad: "??",
+                                        angry: "??",
                                       };
                                       return (
                                         <span
@@ -5006,7 +5006,7 @@ export default function Dashboard({ userData, onLogout }) {
                           (e.currentTarget.style.color = "#94a3b8")
                         }
                       >
-                        💬 Comment ({post.comments ? post.comments.length : 0})
+                        ?? Comment ({post.comments ? post.comments.length : 0})
                       </button>
                     </div>
                   </div>
@@ -5061,7 +5061,7 @@ export default function Dashboard({ userData, onLogout }) {
           </form>
 
           {msgSearchError && (
-            <p style={{ color: "#ef4444", fontSize: "0.85rem", marginBottom: "12px" }}>✗ {msgSearchError}</p>
+            <p style={{ color: "#ef4444", fontSize: "0.85rem", marginBottom: "12px" }}>? {msgSearchError}</p>
           )}
 
           {msgSearchResults.length > 0 && (
@@ -5182,7 +5182,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
           <div ref={scrollRef} style={{ background: "#0f172a", borderRadius: "16px", border: "1px solid #334155", padding: "16px", minHeight: "350px", maxHeight: "420px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px" }}>
             {chatMessages.length === 0 ? (
-              <div style={{ color: "#94a3b8", textAlign: "center", margin: "auto", fontSize: "0.95rem" }}>No messages yet. Say hi! 👋</div>
+              <div style={{ color: "#94a3b8", textAlign: "center", margin: "auto", fontSize: "0.95rem" }}>No messages yet. Say hi! ??</div>
             ) : chatMessages.map((msg, i) => {
               const isMe = msg.sender === userId || msg.sender?._id === userId;
               return (
@@ -5241,7 +5241,7 @@ export default function Dashboard({ userData, onLogout }) {
 
 
 
-        {/* 🔍 Search Bar Section */}
+        {/* ?? Search Bar Section */}
         <div style={{ marginBottom: "20px" }}>
           <form
             onSubmit={handleFriendSearch}
@@ -5285,7 +5285,7 @@ export default function Dashboard({ userData, onLogout }) {
                 marginLeft: "5px",
               }}
             >
-              ✗ {friendSearchError}
+              ? {friendSearchError}
             </p>
           )}
 
@@ -5377,7 +5377,7 @@ export default function Dashboard({ userData, onLogout }) {
           )}
         </div>
 
-        {/* ✍️ Post Creation Card (Active/Enabled!) */}
+        {/* ?? Post Creation Card (Active/Enabled!) */}
         <div
           style={{
             background: "var(--bg-card)",
@@ -5419,9 +5419,9 @@ export default function Dashboard({ userData, onLogout }) {
                   cursor: "pointer",
                 }}
               >
-                <option value="public">🌍 Public</option>
-                <option value="friends">👥 Friends Only</option>
-                <option value="private">🔒 Private</option>
+                <option value="public">?? Public</option>
+                <option value="friends">?? Friends Only</option>
+                <option value="private">?? Private</option>
               </select>
               <button
                 className="primary-button"
@@ -5435,7 +5435,7 @@ export default function Dashboard({ userData, onLogout }) {
           </form>
         </div>
 
-        {/* 📱 Social Feed Timeline Posts (Loaded dynamically) */}
+        {/* ?? Social Feed Timeline Posts (Loaded dynamically) */}
         <div>
           <h4
             style={{
@@ -5449,7 +5449,7 @@ export default function Dashboard({ userData, onLogout }) {
 
           {feedLoading ? (
             <div style={{ textAlign: "center", padding: "40px" }}>
-              <p style={{ color: "#94a3b8" }}>🔄 Refreshing feed...</p>
+              <p style={{ color: "#94a3b8" }}>?? Refreshing feed...</p>
             </div>
           ) : homeFeedPosts.length === 0 ? (
             <div
@@ -5573,7 +5573,7 @@ export default function Dashboard({ userData, onLogout }) {
                         {post.author.firstName} {post.author.lastName}
                       </div>
                       <div style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
-                        @{post.author.username} •{" "}
+                        @{post.author.username} �{" "}
                         {new Date(post.createdAt).toLocaleDateString()}{" "}
                         {new Date(post.createdAt).toLocaleTimeString([], {
                           hour: "2-digit",
@@ -5598,10 +5598,10 @@ export default function Dashboard({ userData, onLogout }) {
                     }}
                   >
                     {post.visibility === "public"
-                      ? "🌍 Public"
+                      ? "?? Public"
                       : post.visibility === "friends"
-                        ? "👥 Friends"
-                        : "🔒 Private"}
+                        ? "?? Friends"
+                        : "?? Private"}
                   </div>
                 </div>
                 <p
@@ -5645,11 +5645,11 @@ export default function Dashboard({ userData, onLogout }) {
                         .slice(0, 3)
                         .map((type) => {
                           const emojis = {
-                            like: "👍",
-                            love: "❤️",
-                            haha: "😆",
-                            sad: "😢",
-                            angry: "😡",
+                            like: "??",
+                            love: "??",
+                            haha: "??",
+                            sad: "??",
+                            angry: "??",
                           };
                           return emojis[type];
                         })
@@ -5662,7 +5662,7 @@ export default function Dashboard({ userData, onLogout }) {
                   </div>
                 )}
 
-                {/* 🟢 Post Action Footer (React & Comment Buttons) */}
+                {/* ?? Post Action Footer (React & Comment Buttons) */}
                 <div
                   style={{
                     display: "flex",
@@ -5686,11 +5686,11 @@ export default function Dashboard({ userData, onLogout }) {
                           (r) => (r.user._id || r.user) === userId,
                         );
                       const emojiMap = {
-                        like: "👍",
-                        love: "❤️",
-                        haha: "😆",
-                        sad: "😢",
-                        angry: "😡",
+                        like: "??",
+                        love: "??",
+                        haha: "??",
+                        sad: "??",
+                        angry: "??",
                       };
                       const labelMap = {
                         like: "Like",
@@ -5733,7 +5733,7 @@ export default function Dashboard({ userData, onLogout }) {
                           >
                             {myReaction
                               ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
-                              : "👍 React"}
+                              : "?? React"}
                           </button>
 
                           {/* Hover Reactions Popup */}
@@ -5756,11 +5756,11 @@ export default function Dashboard({ userData, onLogout }) {
                               {["like", "love", "haha", "sad", "angry"].map(
                                 (type) => {
                                   const emojis = {
-                                    like: "👍",
-                                    love: "❤️",
-                                    haha: "😆",
-                                    sad: "😢",
-                                    angry: "😡",
+                                    like: "??",
+                                    love: "??",
+                                    haha: "??",
+                                    sad: "??",
+                                    angry: "??",
                                   };
                                   return (
                                     <span
@@ -5818,7 +5818,7 @@ export default function Dashboard({ userData, onLogout }) {
                       (e.currentTarget.style.color = "#94a3b8")
                     }
                   >
-                    💬 Comment ({post.comments ? post.comments.length : 0})
+                    ?? Comment ({post.comments ? post.comments.length : 0})
                   </button>
                 </div>
               </div>
@@ -5855,7 +5855,7 @@ export default function Dashboard({ userData, onLogout }) {
               }}
             ></div>
             <p style={{ color: "#94a3b8", fontSize: "0.95rem" }}>
-              🔄 Loading transactions...
+              ?? Loading transactions...
             </p>
           </div>
         ) : txHistory.length === 0 ? (
@@ -5978,7 +5978,7 @@ export default function Dashboard({ userData, onLogout }) {
       <div className="view-container">
         <h2 className="page-title">Pay Bills</h2>
 
-        {/* ── STEP 1: Account Number Form ── */}
+        {/* -- STEP 1: Account Number Form -- */}
         {!billFetched && (
           <div className="mt-4">
             <div className="form-group">
@@ -5991,10 +5991,10 @@ export default function Dashboard({ userData, onLogout }) {
                 }
                 disabled={isFrozen}
               >
-                <option value="Electricity Bill">⚡ Electricity Bill</option>
-                <option value="Gas Bill">🔥 Gas Bill</option>
-                <option value="Water Bill">💧 Water Bill</option>
-                <option value="Internet Bill">🌐 Internet Bill</option>
+                <option value="Electricity Bill">? Electricity Bill</option>
+                <option value="Gas Bill">?? Gas Bill</option>
+                <option value="Water Bill">?? Water Bill</option>
+                <option value="Internet Bill">?? Internet Bill</option>
               </select>
             </div>
             <div className="form-group">
@@ -6030,12 +6030,12 @@ export default function Dashboard({ userData, onLogout }) {
               onClick={handleFetchBillAmount}
               disabled={loading || isFrozen || !billForm.consumerNumber}
             >
-              {loading ? "Fetching..." : "🔍 Fetch My Bills"}
+              {loading ? "Fetching..." : "?? Fetch My Bills"}
             </button>
           </div>
         )}
 
-        {/* ── STEP 2: Invoices List ── */}
+        {/* -- STEP 2: Invoices List -- */}
         {billFetched && activeInvoices.length > 0 && (
           <div style={{ marginTop: "20px" }}>
             {/* Back button */}
@@ -6060,7 +6060,7 @@ export default function Dashboard({ userData, onLogout }) {
               Go Back
             </button>
 
-            {/* ── 👤 KARACHI PHYSICAL BILL REPLICA CARD ── */}
+            {/* -- ?? KARACHI PHYSICAL BILL REPLICA CARD -- */}
             {activeInvoices.map((inv) => {
               const isSelected = selectedInvoiceIds.includes(inv.invoiceId);
               const isPaid = inv.status === "PAID";
@@ -6069,28 +6069,28 @@ export default function Dashboard({ userData, onLogout }) {
               let billGradient =
                 "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)";
               let accentColor = "#6366f1";
-              let providerLogo = "🏢";
+              let providerLogo = "??";
 
               if (inv.provider === "K-Electric") {
                 billGradient =
                   "linear-gradient(135deg, #1e3a8a 0%, #172554 100%)";
                 accentColor = "#38bdf8";
-                providerLogo = "⚡ KE (K-Electric)";
+                providerLogo = "? KE (K-Electric)";
               } else if (inv.provider === "SSGC") {
                 billGradient =
                   "linear-gradient(135deg, #7c2d12 0%, #431407 100%)";
                 accentColor = "#f97316";
-                providerLogo = "🔥 SSGC (Gas)";
+                providerLogo = "?? SSGC (Gas)";
               } else if (inv.provider === "KWSB") {
                 billGradient =
                   "linear-gradient(135deg, #115e59 0%, #042f2e 100%)";
                 accentColor = "#14b8a6";
-                providerLogo = "💧 KWSB (Water)";
+                providerLogo = "?? KWSB (Water)";
               } else if (inv.provider === "PTCL") {
                 billGradient =
                   "linear-gradient(135deg, #065f46 0%, #022c22 100%)";
                 accentColor = "#10b981";
-                providerLogo = "🌐 PTCL (Internet)";
+                providerLogo = "?? PTCL (Internet)";
               }
 
               return (
@@ -6183,7 +6183,7 @@ export default function Dashboard({ userData, onLogout }) {
                             border: `1px solid ${isPaid ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
                           }}
                         >
-                          {isPaid ? "✅ PAID" : "⏳ UNPAID"}
+                          {isPaid ? "? PAID" : "? UNPAID"}
                         </span>
                       </div>
                     </div>
@@ -6401,7 +6401,7 @@ export default function Dashboard({ userData, onLogout }) {
                                   fontWeight: 900,
                                 }}
                               >
-                                ✓
+                                ?
                               </span>
                             )}
                           </div>
@@ -6436,14 +6436,14 @@ export default function Dashboard({ userData, onLogout }) {
                         fontWeight: 600,
                       }}
                     >
-                      🎉 This bill is fully paid. No outstanding charges.
+                      ?? This bill is fully paid. No outstanding charges.
                     </div>
                   )}
                 </div>
               );
             })}
 
-            {/* ── Total & Pay Button ── */}
+            {/* -- Total & Pay Button -- */}
             {selectedInvoiceIds.length > 0 && (
               <div
                 style={{
@@ -6478,19 +6478,19 @@ export default function Dashboard({ userData, onLogout }) {
                 </div>
                 <button
                   className="primary-button"
-                  onClick={() => setShowBillConfirm(true)} // 🌟 Open the confirmation modal first!
+                  onClick={() => setShowBillConfirm(true)} // ?? Open the confirmation modal first!
                   disabled={loading || isFrozen}
                   style={{ margin: 0 }}
                 >
                   {loading
                     ? "Processing..."
-                    : `💳 Pay PKR ${selectedTotal.toLocaleString()}`}
+                    : `?? Pay PKR ${selectedTotal.toLocaleString()}`}
                 </button>
               </div>
             )}
 
-            {/* 🌟 BILL PAYMENT CONFIRMATION MODAL */}
-            {/* 🌟 BILL PAYMENT CONFIRMATION MODAL */}
+            {/* ?? BILL PAYMENT CONFIRMATION MODAL */}
+            {/* ?? BILL PAYMENT CONFIRMATION MODAL */}
             {showBillConfirm && (
               <div
                 className="modal-overlay"
@@ -6506,7 +6506,7 @@ export default function Dashboard({ userData, onLogout }) {
                       className="close-btn"
                       onClick={() => setShowBillConfirm(false)}
                     >
-                      ×
+                      �
                     </button>
                   </div>
 
@@ -6590,7 +6590,7 @@ export default function Dashboard({ userData, onLogout }) {
                       textAlign: "center",
                     }}
                   >
-                    ⚠️ This payment is instant and cannot be reversed once
+                    ?? This payment is instant and cannot be reversed once
                     confirmed.
                   </p>
 
@@ -6608,7 +6608,7 @@ export default function Dashboard({ userData, onLogout }) {
                       }}
                       disabled={loading}
                     >
-                      {loading ? "Processing..." : "✅ Confirm & Pay"}
+                      {loading ? "Processing..." : "? Confirm & Pay"}
                     </button>
                     <button
                       className="secondary-button"
@@ -6654,7 +6654,7 @@ export default function Dashboard({ userData, onLogout }) {
               // Fetch recipient details
               try {
                 const res = await fetch(
-                  `http://localhost:5000/api/profile/mobile/${mobile}`,
+                  `https://mern-auth1-qnmh.onrender.com/api/profile/mobile/${mobile}`,
                   {
                     headers: { Authorization: `Bearer ${getToken()}` },
                   },
@@ -6669,7 +6669,7 @@ export default function Dashboard({ userData, onLogout }) {
                     msg: data.message || `Server status code: ${res.status}`,
                     type: "error",
                   });
-                  // 🟢 Safe Reset on fail
+                  // ?? Safe Reset on fail
                   setQrView(null);
                   setQrScanResult(null);
                   setQrRecipient(null);
@@ -6680,7 +6680,7 @@ export default function Dashboard({ userData, onLogout }) {
                   msg: "Could not fetch user details.",
                   type: "error",
                 });
-                // 🟢 Safe Reset on catch exception (blocks screen freeze)
+                // ?? Safe Reset on catch exception (blocks screen freeze)
                 setQrView(null);
                 setQrScanResult(null);
                 setQrRecipient(null);
@@ -6739,7 +6739,7 @@ export default function Dashboard({ userData, onLogout }) {
                   letterSpacing: "0.5px",
                 }}
               >
-                📱 My QR Code Mode
+                ?? My QR Code Mode
               </div>
             )}
             {qrView === "scanner" && (
@@ -6757,7 +6757,7 @@ export default function Dashboard({ userData, onLogout }) {
                   letterSpacing: "0.5px",
                 }}
               >
-                📷 Scan QR Mode
+                ?? Scan QR Mode
               </div>
             )}
           </div>
@@ -6799,7 +6799,7 @@ export default function Dashboard({ userData, onLogout }) {
               }
               onMouseLeave={(e) => (e.currentTarget.style.transform = "none")}
             >
-              <span style={{ fontSize: "2.5rem" }}>📱</span>
+              <span style={{ fontSize: "2.5rem" }}>??</span>
               <div>
                 <div
                   style={{
@@ -6840,7 +6840,7 @@ export default function Dashboard({ userData, onLogout }) {
               }
               onMouseLeave={(e) => (e.currentTarget.style.transform = "none")}
             >
-              <span style={{ fontSize: "2.5rem" }}>📷</span>
+              <span style={{ fontSize: "2.5rem" }}>??</span>
               <div>
                 <div
                   style={{
@@ -6912,7 +6912,7 @@ export default function Dashboard({ userData, onLogout }) {
                 fontWeight: 600,
               }}
             >
-              ✕ Back to Main Menu
+              ? Back to Main Menu
             </button>
           </div>
         )}
@@ -6943,7 +6943,7 @@ export default function Dashboard({ userData, onLogout }) {
                 fontWeight: 600,
               }}
             >
-              ✕ Cancel Scan
+              ? Cancel Scan
             </button>
             <p
               style={{
@@ -7009,7 +7009,7 @@ export default function Dashboard({ userData, onLogout }) {
                       fontWeight: 500,
                     }}
                   >
-                    ✅ Verified Wallexa Account
+                    ? Verified Wallexa Account
                   </div>
                   <div
                     style={{
@@ -7054,7 +7054,7 @@ export default function Dashboard({ userData, onLogout }) {
                 }
                 onClick={() => setShowQrConfirm(true)}
               >
-                {loading ? "Sending..." : `💸 Send PKR ${qrAmount || "0"}`}
+                {loading ? "Sending..." : `?? Send PKR ${qrAmount || "0"}`}
               </button>
               <button
                 className="secondary-button"
@@ -7084,7 +7084,7 @@ export default function Dashboard({ userData, onLogout }) {
                 fontSize: "0.85rem",
               }}
             >
-              ✕ Cancel & Exit
+              ? Cancel & Exit
             </button>
           </div>
         )}
@@ -7415,7 +7415,7 @@ export default function Dashboard({ userData, onLogout }) {
                                       "",
                                     );
 
-                                    // 🛡️ Calculate other friends' total custom amounts
+                                    // ??? Calculate other friends' total custom amounts
                                     const otherSum = splitForm.friends.reduce(
                                       (sum, f, i) => {
                                         if (i === index) return sum;
@@ -7424,13 +7424,13 @@ export default function Dashboard({ userData, onLogout }) {
                                       0,
                                     );
 
-                                    // 🛡️ Max allowed share for this specific field
+                                    // ??? Max allowed share for this specific field
                                     const maxAllowed =
                                       Number(splitForm.totalAmount || 0) -
                                       otherSum;
                                     const newAmount = Number(val || 0);
 
-                                    // 🛡️ If entered value exceeds the limit, cap it automatically
+                                    // ??? If entered value exceeds the limit, cap it automatically
                                     if (newAmount > maxAllowed) {
                                       const cappedVal =
                                         maxAllowed > 0
@@ -7472,7 +7472,7 @@ export default function Dashboard({ userData, onLogout }) {
                   ))}
                 </div>
               </div>
-              {/* 📊 Live Custom Split Breakdown */}
+              {/* ?? Live Custom Split Breakdown */}
               {splitForm.isCustom &&
                 splitForm.totalAmount &&
                 splitForm.friends.length > 0 &&
@@ -7574,7 +7574,7 @@ export default function Dashboard({ userData, onLogout }) {
                             fontSize: "0.85rem",
                           }}
                         >
-                          ⚠️ Warning: Sum of custom amounts exceeds total amount
+                          ?? Warning: Sum of custom amounts exceeds total amount
                           by PKR{" "}
                           {Math.abs(
                             Number(splitForm.totalAmount) -
@@ -7589,7 +7589,7 @@ export default function Dashboard({ userData, onLogout }) {
                     </div>
                   </div>
                 )}
-              {/* 📊 Live Equal Split Breakdown */}
+              {/* ?? Live Equal Split Breakdown */}
               {splitForm.totalAmount &&
                 splitForm.friends.length > 0 &&
                 splitForm.friends.every(
@@ -7942,7 +7942,7 @@ export default function Dashboard({ userData, onLogout }) {
                               {p?.userId?.lastName || ""}
                             </span>
                             <span style={{ fontWeight: 700 }}>
-                              PKR {Number(p?.amount || 0).toLocaleString()} •{" "}
+                              PKR {Number(p?.amount || 0).toLocaleString()} �{" "}
                               {p?.status || "PENDING"}
                             </span>
                           </div>
@@ -8044,7 +8044,7 @@ export default function Dashboard({ userData, onLogout }) {
 
         if (age < 18) {
           setToast({
-            title: "Age Restriction 🔞",
+            title: "Age Restriction ??",
             msg: "You must be at least 18 years old to use Wallexa.",
             type: "error",
           });
@@ -8064,7 +8064,7 @@ export default function Dashboard({ userData, onLogout }) {
       setLoading(true);
       try {
         const res = await fetch(
-          "http://localhost:5000/api/profile/update",
+          "https://mern-auth1-qnmh.onrender.com/api/profile/update",
           {
             method: "PUT",
             headers: {
@@ -8077,7 +8077,7 @@ export default function Dashboard({ userData, onLogout }) {
         const data = await res.json();
         if (res.ok) {
           setToast({
-            title: "Success ✅",
+            title: "Success ?",
             msg: "Profile updated successfully!",
             type: "success",
           });
@@ -8346,7 +8346,7 @@ export default function Dashboard({ userData, onLogout }) {
 
             <InfoRow
               label="Transaction PIN"
-              value="••••••"
+              value="������"
               onEdit={handleOpenForgotPin}
             />
             
@@ -8401,7 +8401,7 @@ export default function Dashboard({ userData, onLogout }) {
     setSetupLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5000/api/wallet/setup-pin",
+        "https://mern-auth1-qnmh.onrender.com/api/wallet/setup-pin",
         {
           method: "POST",
           headers: {
@@ -8416,7 +8416,7 @@ export default function Dashboard({ userData, onLogout }) {
       if (res.ok) {
         setIsPinSet(true);
         setToast({
-          title: "PIN Setup Successful ✅",
+          title: "PIN Setup Successful ?",
           msg: "Your secure transaction PIN has been set up successfully.",
           type: "success",
         });
@@ -8489,7 +8489,7 @@ export default function Dashboard({ userData, onLogout }) {
               border: "1px solid rgba(99, 102, 241, 0.2)",
             }}
           >
-            🔑 <strong>Security Alert:</strong> This PIN will be required to
+            ?? <strong>Security Alert:</strong> This PIN will be required to
             verify all transactions. Please choose a secure 6-digit code.
           </p>
 
@@ -8509,7 +8509,7 @@ export default function Dashboard({ userData, onLogout }) {
                   textAlign: "center",
                 }}
               >
-                ⚠️ {setupError}
+                ?? {setupError}
               </div>
             )}
 
@@ -8538,7 +8538,7 @@ export default function Dashboard({ userData, onLogout }) {
                     paddingRight: "50px",
                   }}
                   maxLength={6}
-                  placeholder="•••••"
+                  placeholder="�����"
                   value={setupPin}
                   onFocus={() => setFocusedPinField("setup")}
                   onChange={(e) => {
@@ -8604,7 +8604,7 @@ export default function Dashboard({ userData, onLogout }) {
                     paddingRight: "50px",
                   }}
                   maxLength={6}
-                  placeholder="•••••"
+                  placeholder="�����"
                   value={confirmPin}
                   onFocus={() => setFocusedPinField("confirm")}
                   onChange={(e) => {
@@ -8774,8 +8774,8 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
 
           <div className="header-actions">
-            {/* 👤 MY SOCIAL PROFILE ICON (Only visible on Social Feed tab) */}
-            {/* 💬 MESSAGES BUTTON (Social Feed header) */}
+            {/* ?? MY SOCIAL PROFILE ICON (Only visible on Social Feed tab) */}
+            {/* ?? MESSAGES BUTTON (Social Feed header) */}
             {activeTab === "social" && (
               <button
                 className="notif-btn"
@@ -8813,7 +8813,7 @@ export default function Dashboard({ userData, onLogout }) {
               </button>
             )}
 
-                        {/* 👤 MY SOCIAL PROFILE ICON (Messages ke right side) */}
+                        {/* ?? MY SOCIAL PROFILE ICON (Messages ke right side) */}
             {activeTab === "social" && (
               <button
                 className="notif-btn"
@@ -8842,7 +8842,7 @@ export default function Dashboard({ userData, onLogout }) {
                 <User size={24} />
               </button>
             )}
-            {/* 👤 FRIEND REQUESTS DROPDOWN BUTTON (Only visible on Social Feed tab) */}
+            {/* ?? FRIEND REQUESTS DROPDOWN BUTTON (Only visible on Social Feed tab) */}
             {activeTab === "social" && (
               <div style={{ position: "relative" }}>
                 <button
@@ -8857,7 +8857,7 @@ export default function Dashboard({ userData, onLogout }) {
                   }}
                 >
                   <Heart size={24} />{" "}
-                  {/* 🟢 Users icon ko Heart icon se replace kiya */}
+                  {/* ?? Users icon ko Heart icon se replace kiya */}
                   {friendRequests.length +
                     notifications.filter(
                       (n) =>
@@ -8909,7 +8909,7 @@ export default function Dashboard({ userData, onLogout }) {
                       </h3>
                     </div>
                     <div style={{ maxHeight: "350px", overflowY: "auto" }}>
-                      {/* Friend Requests — inline accept/reject */}
+                      {/* Friend Requests � inline accept/reject */}
                       {friendRequests.length > 0 && (
                         <div style={{ borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "8px", marginBottom: "4px" }}>
                           <div style={{ padding: "10px 15px 6px", color: "#818cf8", fontWeight: 700, fontSize: "0.82rem", letterSpacing: "0.06em", textTransform: "uppercase" }}>Friend Requests</div>
@@ -8931,7 +8931,7 @@ export default function Dashboard({ userData, onLogout }) {
                         </div>
                       )}
 
-                      {/* 💬 Social Notifications (Comments & Reactions) */}
+                      {/* ?? Social Notifications (Comments & Reactions) */}
                       {notifications.filter(
                         (n) =>
                           n.type === "SOCIAL_COMMENT" ||
@@ -9016,7 +9016,7 @@ export default function Dashboard({ userData, onLogout }) {
               </div>
             )}
 
-            {/* 🔔 BELL NOTIFICATIONS BUTTON (Visible on all tabs EXCEPT Social Feed) */}
+            {/* ?? BELL NOTIFICATIONS BUTTON (Visible on all tabs EXCEPT Social Feed) */}
             {activeTab !== "social" && (
               <div style={{ position: "relative" }}>
                 <button
@@ -9171,7 +9171,7 @@ export default function Dashboard({ userData, onLogout }) {
           <div className="view-container">
             <h2 className="page-title">Transaction History</h2>
             <div style={{textAlign:"center",padding:"50px 20px",color:"#94a3b8",background:"rgba(255,255,255,0.02)",borderRadius:"12px",border:"1px solid rgba(239,68,68,0.2)",marginTop:"20px"}}>
-              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>❄️ Account is Frozen</h3>
+              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>?? Account is Frozen</h3>
               <p>Please unfreeze your account to view transaction history.</p>
             </div>
           </div>
@@ -9181,7 +9181,7 @@ export default function Dashboard({ userData, onLogout }) {
           <div className="view-container">
             <h2 className="page-title">Split Bill</h2>
             <div style={{textAlign:"center",padding:"50px 20px",color:"#94a3b8",background:"rgba(255,255,255,0.02)",borderRadius:"12px",border:"1px solid rgba(239,68,68,0.2)",marginTop:"20px"}}>
-              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>❄️ Account is Frozen</h3>
+              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>?? Account is Frozen</h3>
               <p>Please unfreeze your account to manage split bills.</p>
             </div>
           </div>
@@ -9191,7 +9191,7 @@ export default function Dashboard({ userData, onLogout }) {
           <div className="view-container">
             <h2 className="page-title">Profile Settings</h2>
             <div style={{textAlign:"center",padding:"50px 20px",color:"#94a3b8",background:"rgba(255,255,255,0.02)",borderRadius:"12px",border:"1px solid rgba(239,68,68,0.2)",marginTop:"20px"}}>
-              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>❄️ Account is Frozen</h3>
+              <h3 style={{color:"#ef4444",marginBottom:"10px"}}>?? Account is Frozen</h3>
               <p>Profile is locked. PIN reset is also disabled. Please unfreeze your account first.</p>
             </div>
           </div>
@@ -9281,7 +9281,7 @@ export default function Dashboard({ userData, onLogout }) {
                   padding: 0,
                 }}
               >
-                ×
+                �
               </button>
               {/* Success Badge / Icon */}
               <div style={{ marginBottom: "20px" }}>
@@ -9298,7 +9298,7 @@ export default function Dashboard({ userData, onLogout }) {
                     border: "2px solid #10b981",
                   }}
                 >
-                  <span style={{ fontSize: "2.2rem" }}>✅</span>
+                  <span style={{ fontSize: "2.2rem" }}>?</span>
                 </div>
                 <h2
                   style={{
@@ -9445,7 +9445,7 @@ export default function Dashboard({ userData, onLogout }) {
                           (selectedTx.description?.startsWith("Transfer to") || selectedTx.description?.startsWith("QR Payment to"))
                           ? "Sent via Wallexa"
                           : selectedTx.type === "BILL_PAYMENT"
-                            ? selectedTx.description?.split(" — ")[0]
+                            ? selectedTx.description?.split(" � ")[0]
                             : selectedTx.type === "SPLIT_PAYMENT" && selectedTx.description?.startsWith("Split Paid:")
                               ? selectedTx.description.replace("Split Paid:", "Split Paid -")
                               : selectedTx.description}
@@ -9570,7 +9570,7 @@ export default function Dashboard({ userData, onLogout }) {
                     )
                   }
                 >
-                  📥 Download PDF
+                  ?? Download PDF
                 </button>
                 <button
                   className="secondary-button"
@@ -9586,7 +9586,7 @@ export default function Dashboard({ userData, onLogout }) {
                     )
                   }
                 >
-                  🔗 Share Receipt
+                  ?? Share Receipt
                 </button>
                 <button
                   className="secondary-button"
@@ -9606,7 +9606,7 @@ export default function Dashboard({ userData, onLogout }) {
                     setShowShareFeedModal(true);
                   }}
                 >
-                  📱 Share to Wallexa Feed
+                  ?? Share to Wallexa Feed
                 </button>
               </div>
             </div>
@@ -9622,13 +9622,13 @@ export default function Dashboard({ userData, onLogout }) {
             <div className="modal-card" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>
-                  {isFrozen ? "Unfreeze Account 🔓" : "Freeze Account ❄️"}
+                  {isFrozen ? "Unfreeze Account ??" : "Freeze Account ??"}
                 </h3>
                 <button
                   className="close-btn"
                   onClick={() => setShowFreezeConfirm(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -9697,7 +9697,7 @@ export default function Dashboard({ userData, onLogout }) {
                     setPinWizardMode("change");
                   }}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -9714,7 +9714,7 @@ export default function Dashboard({ userData, onLogout }) {
                     marginBottom: "15px",
                   }}
                 >
-                  ⚠️ {forgotPinError}
+                  ?? {forgotPinError}
                 </div>
               )}
 
@@ -9787,7 +9787,7 @@ export default function Dashboard({ userData, onLogout }) {
                               paddingRight: "50px",
                             }}
                             maxLength={6}
-                            placeholder="••••••"
+                            placeholder="������"
                             value={changePinCurrent}
                             onChange={(e) => {
                               const val = e.target.value.replace(/\D/g, "");
@@ -10019,7 +10019,7 @@ export default function Dashboard({ userData, onLogout }) {
                         fontSize: "1.5rem",
                       }}
                       maxLength={6}
-                      placeholder="••••••"
+                      placeholder="������"
                       value={forgotPinOtp}
                       onChange={(e) => {
                         const val = e.target.value.replace(/\D/g, "");
@@ -10082,7 +10082,7 @@ export default function Dashboard({ userData, onLogout }) {
                           paddingRight: "50px",
                         }}
                         maxLength={6}
-                        placeholder="••••••"
+                        placeholder="������"
                         value={forgotPinNewPin}
                         onFocus={() => setFocusedForgotPinField("new")}
                         onChange={(e) => {
@@ -10152,7 +10152,7 @@ export default function Dashboard({ userData, onLogout }) {
                           paddingRight: "50px",
                         }}
                         maxLength={6}
-                        placeholder="••••••"
+                        placeholder="������"
                         value={forgotPinConfirmPin}
                         onFocus={() => setFocusedForgotPinField("confirm")}
                         onChange={(e) => {
@@ -10229,7 +10229,7 @@ export default function Dashboard({ userData, onLogout }) {
                     setPendingTx(null);
                   }}
                 >
-                  ×
+                  �
                 </button>
               </div>
               <p
@@ -10265,7 +10265,7 @@ export default function Dashboard({ userData, onLogout }) {
                       textAlign: "center",
                     }}
                   >
-                    ⚠️{" "}
+                    ??{" "}
                     {mustResetPin
                       ? "Security Alert: You must reset your Transaction PIN from your Profile tab before you can authorize any transactions."
                       : pinError}
@@ -10282,7 +10282,7 @@ export default function Dashboard({ userData, onLogout }) {
                     fontWeight: "700",
                   }}
                   maxLength={6}
-                  placeholder="••••••"
+                  placeholder="������"
                   value={transactionPinCode}
                   onChange={(e) => {
                     const val = e.target.value.replace(/\D/g, ""); // Only numbers
@@ -10345,7 +10345,7 @@ export default function Dashboard({ userData, onLogout }) {
                     setOtp("");
                   }}
                 >
-                  ×
+                  �
                 </button>
               </div>
               <p
@@ -10384,7 +10384,7 @@ export default function Dashboard({ userData, onLogout }) {
                     fontSize: "1.5rem",
                   }}
                   maxLength={6}
-                  placeholder="••••••"
+                  placeholder="������"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                   required
@@ -10415,7 +10415,7 @@ export default function Dashboard({ userData, onLogout }) {
                   className="close-btn"
                   onClick={() => setShowSendConfirm(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -10497,7 +10497,7 @@ export default function Dashboard({ userData, onLogout }) {
                   textAlign: "center",
                 }}
               >
-                ⚠️ This transfer is instant and cannot be reversed once
+                ?? This transfer is instant and cannot be reversed once
                 confirmed.
               </p>
 
@@ -10512,7 +10512,7 @@ export default function Dashboard({ userData, onLogout }) {
                   onClick={handleSend}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "✅ Confirm & Send"}
+                  {loading ? "Sending..." : "? Confirm & Send"}
                 </button>
                 <button
                   className="secondary-button"
@@ -10540,7 +10540,7 @@ export default function Dashboard({ userData, onLogout }) {
                   className="close-btn"
                   onClick={() => setShowQrConfirm(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -10611,7 +10611,7 @@ export default function Dashboard({ userData, onLogout }) {
                   textAlign: "center",
                 }}
               >
-                ⚠️ This transfer is instant and cannot be reversed once
+                ?? This transfer is instant and cannot be reversed once
                 confirmed.
               </p>
 
@@ -10626,7 +10626,7 @@ export default function Dashboard({ userData, onLogout }) {
                   onClick={handleQrSend}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "✅ Confirm & Send"}
+                  {loading ? "Sending..." : "? Confirm & Send"}
                 </button>
                 <button
                   className="secondary-button"
@@ -10654,7 +10654,7 @@ export default function Dashboard({ userData, onLogout }) {
                   className="close-btn"
                   onClick={() => setShowExternalConfirm(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -10701,7 +10701,7 @@ export default function Dashboard({ userData, onLogout }) {
                   </strong>
                 </div>
 
-                {/* 🟢 Dynamically Fetched Account Title Display */}
+                {/* ?? Dynamically Fetched Account Title Display */}
                 <div
                   style={{
                     display: "flex",
@@ -10741,7 +10741,7 @@ export default function Dashboard({ userData, onLogout }) {
                   textAlign: "center",
                 }}
               >
-                ⚠️ This transaction will be validated via Stripe API and cannot
+                ?? This transaction will be validated via Stripe API and cannot
                 be reversed once confirmed.
               </p>
 
@@ -10756,7 +10756,7 @@ export default function Dashboard({ userData, onLogout }) {
                   onClick={handleExternalTransfer}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "✅ Confirm Transfer"}
+                  {loading ? "Sending..." : "? Confirm Transfer"}
                 </button>
                 <button
                   className="secondary-button"
@@ -10780,13 +10780,13 @@ export default function Dashboard({ userData, onLogout }) {
             <div className="modal-card" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h3 style={{ color: "#ef4444" }}>
-                  Deactivate Social Profile 🗑️
+                  Deactivate Social Profile ???
                 </h3>
                 <button
                   className="close-btn"
                   onClick={() => setShowDeactivateConfirm(false)}
                 >
-                  ×
+                  �
                 </button>
               </div>
 
@@ -10828,7 +10828,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* 💬 COMMENTS SLIDING BOTTOM SHEET */}
+        {/* ?? COMMENTS SLIDING BOTTOM SHEET */}
         {activeCommentPost && (
           <div
             className="modal-overlay"
@@ -10897,7 +10897,7 @@ export default function Dashboard({ userData, onLogout }) {
                     fontSize: "1.1rem",
                   }}
                 >
-                  ✕
+                  ?
                 </button>
               </div>
 
@@ -11015,7 +11015,7 @@ export default function Dashboard({ userData, onLogout }) {
                         opacity: 0.3,
                       }}
                     >
-                      💬
+                      ??
                     </div>
                     <h4
                       style={{
@@ -11159,7 +11159,7 @@ export default function Dashboard({ userData, onLogout }) {
                 onSubmit={handleCommentSubmit}
                 style={{
                   display: "flex",
-                  flexDirection: "column", // 🟢 Input aur counter ko vertical list me stack karein
+                  flexDirection: "column", // ?? Input aur counter ko vertical list me stack karein
                   gap: "8px",
                   borderTop: "1px solid rgba(255, 255, 255, 0.05)",
                   paddingTop: "15px",
@@ -11178,7 +11178,7 @@ export default function Dashboard({ userData, onLogout }) {
                     placeholder="Write a comment..."
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
-                    maxLength={300} // 🟢 Frontend native limit: 300 characters se upar browser likhne hi nahi dega!
+                    maxLength={300} // ?? Frontend native limit: 300 characters se upar browser likhne hi nahi dega!
                     style={{
                       flex: 1,
                       background: "rgba(0, 0, 0, 0.2)",
@@ -11203,7 +11203,7 @@ export default function Dashboard({ userData, onLogout }) {
                   </button>
                 </div>
 
-                {/* 🟢 Live Character Counter */}
+                {/* ?? Live Character Counter */}
                 <div
                   style={{
                     display: "flex",
@@ -11220,7 +11220,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* 👤 FRIEND REQUESTS POPUP MODAL (Instagram Style Center Modal) */}
+        {/* ?? FRIEND REQUESTS POPUP MODAL (Instagram Style Center Modal) */}
         {showRequestsModal && (
           <div
             className="modal-overlay"
@@ -11274,7 +11274,7 @@ export default function Dashboard({ userData, onLogout }) {
                     cursor: "pointer",
                   }}
                 >
-                  ✕
+                  ?
                 </button>
               </div>
 
@@ -11442,7 +11442,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* 🌟 POST REACTIONS LIST POPUP MODAL (Facebook Style Tabbed Modal) */}
+        {/* ?? POST REACTIONS LIST POPUP MODAL (Facebook Style Tabbed Modal) */}
         {activeReactionsPost && (
           <div
             className="modal-overlay"
@@ -11500,7 +11500,7 @@ export default function Dashboard({ userData, onLogout }) {
                     cursor: "pointer",
                   }}
                 >
-                  ✕
+                  ?
                 </button>
               </div>
 
@@ -11511,11 +11511,11 @@ export default function Dashboard({ userData, onLogout }) {
                   new Set(reactions.map((r) => r.type)),
                 );
                 const emojiMap = {
-                  like: "👍",
-                  love: "❤️",
-                  haha: "😆",
-                  sad: "😢",
-                  angry: "😡",
+                  like: "??",
+                  love: "??",
+                  haha: "??",
+                  sad: "??",
+                  angry: "??",
                 };
 
                 return (
@@ -11738,7 +11738,7 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
         )}
 
-        {/* 🧾 PREMIUM TRANSACTION RECEIPT MODAL */}
+        {/* ?? PREMIUM TRANSACTION RECEIPT MODAL */}
         {showReceiptModal && receiptData && (
           <div
             className="modal-overlay"
@@ -11821,7 +11821,7 @@ export default function Dashboard({ userData, onLogout }) {
                   padding: 0,
                 }}
               >
-                ×
+                �
               </button>
               {/* Green Success Tick */}
               <div style={{ marginBottom: "20px" }}>
@@ -11838,7 +11838,7 @@ export default function Dashboard({ userData, onLogout }) {
                     border: "2px solid #10b981",
                   }}
                 >
-                  <span style={{ fontSize: "2.2rem" }}>✅</span>
+                  <span style={{ fontSize: "2.2rem" }}>?</span>
                 </div>
                 <h2
                   style={{
@@ -12087,7 +12087,7 @@ export default function Dashboard({ userData, onLogout }) {
                     )
                   }
                 >
-                  📥 Download PDF
+                  ?? Download PDF
                 </button>
                 <button
                   className="secondary-button"
@@ -12103,7 +12103,7 @@ export default function Dashboard({ userData, onLogout }) {
                     )
                   }
                 >
-                  🔗 Share Receipt
+                  ?? Share Receipt
                 </button>
                 <button
                   className="secondary-button"
@@ -12121,7 +12121,7 @@ export default function Dashboard({ userData, onLogout }) {
                     setShowShareFeedModal(true);
                   }}
                 >
-                  📱 Share to Wallexa Feed
+                  ?? Share to Wallexa Feed
                 </button>
               </div>
             </div>
@@ -12174,7 +12174,7 @@ export default function Dashboard({ userData, onLogout }) {
                   cursor: "pointer",
                 }}
               >
-                ×
+                �
               </button>
 
               <h3
@@ -12186,7 +12186,7 @@ export default function Dashboard({ userData, onLogout }) {
                   textAlign: "center",
                 }}
               >
-                Share to Wallexa Feed 📱
+                Share to Wallexa Feed ??
               </h3>
 
               {/* Text Input Caption */}
@@ -12247,13 +12247,13 @@ export default function Dashboard({ userData, onLogout }) {
                   }}
                 >
                   <option value="public" style={{ background: "#1e293b" }}>
-                    🌍 Public (Everyone)
+                    ?? Public (Everyone)
                   </option>
                   <option value="friends" style={{ background: "#1e293b" }}>
-                    👥 Friends Only
+                    ?? Friends Only
                   </option>
                   <option value="private" style={{ background: "#1e293b" }}>
-                    🔒 Private (Only Me)
+                    ?? Private (Only Me)
                   </option>
                 </select>
               </div>
@@ -12296,10 +12296,10 @@ export default function Dashboard({ userData, onLogout }) {
                       }}
                     >
                       {receiptData.type === "EXTERNAL_TRANSFER"
-                        ? "🏦 Local Bank Transfer"
+                        ? "?? Local Bank Transfer"
                         : receiptData.type === "ADD_MONEY"
-                          ? "💰 Wallet Deposit"
-                          : "💸 Wallexa P2P Transfer"}
+                          ? "?? Wallet Deposit"
+                          : "?? Wallexa P2P Transfer"}
                     </span>
                   </div>
                   <div
@@ -12370,7 +12370,7 @@ export default function Dashboard({ userData, onLogout }) {
                   onClick={handleShareToFeed}
                   disabled={loading} // Double-click block karega
                 >
-                  {loading ? "Sharing..." : "Post to Feed 🚀"}
+                  {loading ? "Sharing..." : "Post to Feed ??"}
                 </button>
               </div>
             </div>
