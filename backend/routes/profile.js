@@ -361,6 +361,7 @@ async function buildSearchUserPayload(reqUser, foundProfile, myProfile) {
     id: foundProfile.userId,
     firstName: foundProfile.displayName,
     lastName: "",
+    username: foundProfile.username || null,
     profilePicture: foundProfile.profilePicture,
     status,
     requestId,
@@ -687,6 +688,7 @@ router.get("/friends", protect, async (req, res) => {
           id: friendId,
           firstName: friendProfile.displayName,
           lastName: "",
+          username: friendProfile.username || null,
           profilePicture: friendProfile.profilePicture,
         });
       }
@@ -883,6 +885,7 @@ router.get("/posts/feed", protect, async (req, res) => {
             id: post.author,
             firstName: authorProfile.displayName,
             lastName: "",
+            username: authorProfile.username || null,
             profilePicture: authorProfile.profilePicture,
           },
           comments: populatedComments, // 🟢 Populate comments
@@ -1027,6 +1030,7 @@ router.get("/posts/user/:userId", protect, async (req, res) => {
           id: post.author,
           firstName: targetProfileFromMap.displayName,
           lastName: "",
+          username: targetProfileFromMap.username || null,
           profilePicture: targetProfileFromMap.profilePicture,
         },
         comments: populatedComments, // 🟢 Populate comments
@@ -1068,12 +1072,21 @@ router.get("/:userId", protect, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    const socialProfile = await SocialProfile.findOne({
+      userId: req.params.userId,
+    }).select("username displayName profilePicture isActive");
+
     res.json({
       id: user._id,
-      firstName: user.firstName,
-      lastName: user.lastName,
+      firstName: socialProfile?.displayName || user.firstName,
+      lastName: socialProfile?.isActive === false ? "" : user.lastName,
+      username:
+        socialProfile && socialProfile.isActive !== false
+          ? socialProfile.username
+          : null,
       mobileNumber: user.mobileNumber,
-      profilePicture: user.profilePicture,
+      profilePicture:
+        socialProfile?.profilePicture || user.profilePicture || null,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1303,6 +1316,7 @@ router.get("/posts/:postId", protect, async (req, res) => {
         id: post.author,
         firstName: authorProfile.displayName,
         lastName: "",
+        username: authorProfile.username || null,
         profilePicture: authorProfile.profilePicture,
       },
       comments: populatedComments,

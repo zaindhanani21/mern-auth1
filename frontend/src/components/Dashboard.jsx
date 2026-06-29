@@ -1123,15 +1123,34 @@ export default function Dashboard({ userData, onLogout }) {
   //   Kisi specific searched user ke posts fetch karna public profile display ke liye
   const fetchPublicUserPosts = async (userId) => {
     try {
-      const res = await fetch(
-        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/user/${userId}`,
-        {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        },
-      );
-      const data = await res.json();
-      if (res.ok) {
-        setPublicUserPosts(data);
+      const headers = { Authorization: `Bearer ${getToken()}` };
+      const [postsRes, profileRes] = await Promise.all([
+        fetch(
+          `https://mern-auth1-qnmh.onrender.com/api/profile/posts/user/${userId}`,
+          { headers },
+        ),
+        fetch(`https://mern-auth1-qnmh.onrender.com/api/profile/${userId}`, {
+          headers,
+        }),
+      ]);
+
+      if (postsRes.ok) {
+        setPublicUserPosts(await postsRes.json());
+      }
+
+      if (profileRes.ok) {
+        const profileData = await profileRes.json();
+        setSelectedPublicUser((prev) =>
+          prev && String(prev.id) === String(userId)
+            ? {
+                ...prev,
+                username: profileData.username || prev.username,
+                firstName: profileData.firstName || prev.firstName,
+                profilePicture:
+                  profileData.profilePicture || prev.profilePicture,
+              }
+            : prev,
+        );
       }
     } catch (e) {
       console.error("Error fetching user posts", e);
@@ -4808,14 +4827,7 @@ export default function Dashboard({ userData, onLogout }) {
       return (
         <div className="view-container">
           {/* Header with Back button */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "15px",
-              marginBottom: "20px",
-            }}
-          >
+          <div className="social-profile-header">
             <button
               className="secondary-button"
               style={{
@@ -4836,33 +4848,9 @@ export default function Dashboard({ userData, onLogout }) {
           </div>
 
           {/* Profile Card Banner */}
-          <div
-            style={{
-              background: "var(--bg-card)",
-              padding: "30px",
-              borderRadius: "24px",
-              border: "1px solid rgba(255, 255, 255, 0.05)",
-              textAlign: "center",
-              marginBottom: "30px",
-            }}
-          >
+          <div className="social-profile-card">
             {/* User Avatar */}
-            <div
-              style={{
-                width: "90px",
-                height: "90px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "2rem",
-                fontWeight: 700,
-                color: "white",
-                margin: "0 auto 15px auto",
-                boxShadow: "0 8px 24px rgba(99, 102, 241, 0.3)",
-              }}
-            >
+            <div className="social-profile-avatar">
               {selectedPublicUser.profilePicture ? (
                 <img
                   src={selectedPublicUser.profilePicture}
@@ -4879,19 +4867,21 @@ export default function Dashboard({ userData, onLogout }) {
               )}
             </div>
 
-            {/* User Name & Handle */}
-            <h3
-              style={{
-                fontSize: "1.5rem",
-                color: "#f8fafc",
-                margin: "0 0 5px 0",
-              }}
-            >
+            {/* User Name & Username (profile page only) */}
+            <h3 className="social-profile-name">
               {selectedPublicUser.firstName} {selectedPublicUser.lastName}
             </h3>
+            {(selectedPublicUser.username ||
+              (selectedPublicUser.status === "SELF" && profile?.username)) && (
+              <p className="social-profile-username">
+                @
+                {selectedPublicUser.username ||
+                  (selectedPublicUser.status === "SELF" ? profile.username : "")}
+              </p>
+            )}
 
             {/* Dynamic Friendship Status Action Button */}
-            <div style={{ maxWidth: "250px", margin: "0 auto" }}>
+            <div className="social-profile-actions">
               {selectedPublicUser.status === "NONE" && (
                 <button
                   className="primary-button"
@@ -4923,7 +4913,7 @@ export default function Dashboard({ userData, onLogout }) {
                 </button>
               )}
               {selectedPublicUser.status === "RECEIVED" && (
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div className="social-action-row">
                   <button
                     className="primary-button"
                     style={{
@@ -4965,25 +4955,10 @@ export default function Dashboard({ userData, onLogout }) {
                 </div>
               )}
               {selectedPublicUser.status === "FRIENDS" && (
-                <div
-                  key="friends-container"
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                  }}
-                >
+                <div key="friends-container" className="social-action-row">
                   <button
                     key="friends-label"
-                    className="primary-button"
-                    style={{
-                      background: "#10b981",
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "5px",
-                      pointerEvents: "none",
-                    }}
+                    className="primary-button social-action-btn social-action-btn-status"
                   >
                     <UserCheck size={16} /> Friends
                   </button>
@@ -4992,8 +4967,8 @@ export default function Dashboard({ userData, onLogout }) {
                                     {/* MESSAGE BUTTON */}
                   <button
                     key="message-friend-btn"
-                    className="primary-button"
-                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "5px", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}
+                    className="primary-button social-action-btn social-action-btn-message"
+                    style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", boxShadow: "0 4px 12px rgba(99,102,241,0.4)" }}
                     onClick={() => openChatWith({
   id: selectedPublicUser.id,
   firstName: selectedPublicUser.firstName,
@@ -5009,16 +4984,7 @@ export default function Dashboard({ userData, onLogout }) {
                   {/* UNFRIEND BUTTON */}
                   <button
                     key="unfriend-action-btn"
-                    className="primary-button"
-                    style={{
-                      background: "#ef4444",
-                      color: "white",
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "5px",
-                    }}
+                    className="primary-button social-action-btn social-action-btn-danger"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -5292,38 +5258,12 @@ export default function Dashboard({ userData, onLogout }) {
 
           {/* ?? 3 Privacy Tabs: Public, Friends Only, Private (Visible only on own profile "SELF") */}
           {selectedPublicUser.status === "SELF" && (
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                width: "100%",
-                marginBottom: "25px",
-              }}
-            >
+            <div className="social-privacy-tabs">
               {["public", "friends", "private"].map((tab) => (
                 <button
                   key={tab}
+                  className={`social-privacy-tab${ownPostPrivacyFilter === tab ? " active" : ""}`}
                   onClick={() => setOwnPostPrivacyFilter(tab)}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    borderRadius: "12px",
-                    border: "1px solid",
-                    borderColor:
-                      ownPostPrivacyFilter === tab
-                        ? "rgba(99, 102, 241, 0.4)"
-                        : "rgba(255, 255, 255, 0.05)",
-                    background:
-                      ownPostPrivacyFilter === tab
-                        ? "rgba(99, 102, 241, 0.15)"
-                        : "var(--bg-card)",
-                    color: ownPostPrivacyFilter === tab ? "#818cf8" : "#94a3b8",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    fontSize: "0.9rem",
-                    transition: "all 0.2s ease",
-                    textTransform: "capitalize",
-                  }}
                 >
                   {tab === "friends" ? "Friends Only" : tab}
                 </button>
@@ -5839,19 +5779,8 @@ export default function Dashboard({ userData, onLogout }) {
                 {friendSearchResults.length} result(s) found
               </p>
               {friendSearchResults.map((user) => (
-                <div
-                  key={user.id}
-                  style={{
-                    background: "rgba(99, 102, 241, 0.05)",
-                    border: "1px solid rgba(99, 102, 241, 0.2)",
-                    padding: "15px 20px",
-                    borderRadius: "16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div key={user.id} className="social-search-result">
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: "1 1 180px", minWidth: 0 }}>
                     <div
                       style={{
                         width: "45px",
@@ -5881,10 +5810,21 @@ export default function Dashboard({ userData, onLogout }) {
                         user.firstName?.charAt(0).toUpperCase()
                       )}
                     </div>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div style={{ color: "#f8fafc", fontWeight: 600 }}>
                         {user.firstName} {user.lastName}
                       </div>
+                      {user.username && (
+                        <div
+                          style={{
+                            color: "#818cf8",
+                            fontSize: "0.82rem",
+                            marginTop: "2px",
+                          }}
+                        >
+                          @{user.username}
+                        </div>
+                      )}
                     </div>
                   </div>
 

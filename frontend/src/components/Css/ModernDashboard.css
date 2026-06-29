@@ -654,3 +654,177 @@
 .animate-spin {
     animation: spin 1s linear infinite;
 }
+
+/* SOCIAL PROFILE — username + responsive actions */
+.social-profile-card {
+    background: var(--bg-card);
+    padding: 30px 20px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.social-profile-avatar {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+    margin: 0 auto 15px auto;
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+    overflow: hidden;
+}
+
+.social-profile-name {
+    font-size: 1.5rem;
+    color: #f8fafc;
+    margin: 0 0 4px 0;
+    word-break: break-word;
+}
+
+.social-profile-username {
+    color: #818cf8;
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 0 0 18px 0;
+    letter-spacing: 0.3px;
+}
+
+.social-profile-actions {
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+}
+
+.social-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    width: 100%;
+}
+
+.social-action-btn {
+    flex: 1 1 calc(33.333% - 10px);
+    min-width: 96px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 10px 8px !important;
+    font-size: 0.82rem !important;
+    width: auto !important;
+}
+
+.social-action-btn-status {
+    background: #10b981 !important;
+    pointer-events: none;
+}
+
+.social-action-btn-danger {
+    background: #ef4444 !important;
+    color: white !important;
+}
+
+.social-privacy-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 25px;
+}
+
+.social-privacy-tab {
+    flex: 1 1 100px;
+    min-width: 0;
+    padding: 12px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--bg-card);
+    color: #94a3b8;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    text-transform: capitalize;
+}
+
+.social-privacy-tab.active {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.15);
+    color: #818cf8;
+}
+
+.social-profile-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.social-search-result {
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    padding: 15px 20px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+    .social-profile-card {
+        padding: 24px 16px;
+        margin-bottom: 20px;
+    }
+
+    .social-profile-name {
+        font-size: 1.25rem;
+    }
+
+    .social-action-btn {
+        flex: 1 1 calc(50% - 10px);
+    }
+
+    .social-action-btn-status,
+    .social-action-btn-message {
+        flex: 1 1 calc(50% - 10px);
+    }
+
+    .social-action-btn-danger {
+        flex: 1 1 100%;
+    }
+
+    .social-privacy-tab {
+        flex: 1 1 calc(50% - 10px);
+    }
+
+    .social-search-result {
+        padding: 12px 14px;
+    }
+
+    .social-search-result .primary-button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 400px) {
+    .social-action-btn {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .social-privacy-tab {
+        flex: 1 1 100%;
+    }
+}
