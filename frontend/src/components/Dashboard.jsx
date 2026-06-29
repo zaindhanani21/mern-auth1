@@ -34,6 +34,56 @@ import "./Css/ModernDashboard.css";
 
 const SOCKET_URL = "https://mern-auth1-qnmh.onrender.com";
 
+const REACTION_TYPES = ["like", "love", "haha", "sad", "angry"];
+const REACTION_EMOJIS = {
+  like: "👍",
+  love: "❤️",
+  haha: "😂",
+  sad: "😢",
+  angry: "😠",
+};
+const REACTION_LABELS = {
+  like: "Like",
+  love: "Love",
+  haha: "Haha",
+  sad: "Sad",
+  angry: "Angry",
+};
+const REACTION_COLORS = {
+  like: "#60a5fa",
+  love: "#f43f5e",
+  haha: "#fbbf24",
+  sad: "#60a5fa",
+  angry: "#f97316",
+};
+
+const getReactionUserId = (reaction) =>
+  String(reaction?.user?._id || reaction?.user || "");
+
+const findMyReaction = (reactions, userId) =>
+  (reactions || []).find((r) => getReactionUserId(r) === String(userId));
+
+const computeOptimisticReactions = (reactions, userId, type, meta) => {
+  const uid = String(userId);
+  const list = reactions || [];
+  const existing = list.filter((r) => getReactionUserId(r) === uid);
+  const withoutUser = list.filter((r) => getReactionUserId(r) !== uid);
+
+  if (existing.length > 0 && existing[0].type === type) {
+    return withoutUser;
+  }
+
+  return [
+    ...withoutUser,
+    {
+      user: userId,
+      type,
+      displayName: meta.displayName,
+      profilePicture: meta.profilePicture,
+    },
+  ];
+};
+
 // Security Masking Helper for mobile/account numbers
 const maskInfo = (val) => {
   if (!val) return "";
@@ -106,12 +156,62 @@ const mapTxToReceiptData = (tx, profile) => {
 };
 
 // Helper: Render status posts with receipt cards embedded inside feed
-const renderPostContent = (content, defaultColor = "#cbd5e1") => {
+const renderPostContent = (
+  content,
+  defaultColor = "#cbd5e1",
+  options = {},
+) => {
+  const { compact = false } = options;
+  const getReceiptTypeLabel = (type) => {
+    if (type === "EXTERNAL_TRANSFER") return "Local Bank Transfer";
+    if (type === "ADD_MONEY") return "Wallet Deposit";
+    if (type === "BILL_PAYMENT") return "Utility Bill Payment";
+    if (type === "SPLIT_PAYMENT") return "Split Bill Payment";
+    if (type === "QR_PAYMENT") return "Scan & Pay (QR)";
+    return "Wallexa P2P Transfer";
+  };
+
   // Robust check: matches even if there are spaces or newlines
   if (content.includes("[RECEIPT_POST]")) {
     try {
       const jsonStr = content.replace("[RECEIPT_POST]", "").trim();
       const receipt = JSON.parse(jsonStr);
+
+      if (compact) {
+        return (
+          <div>
+            {receipt.caption && (
+              <p
+                style={{
+                  color: defaultColor,
+                  fontSize: "0.9rem",
+                  lineHeight: "1.5",
+                  marginBottom: "10px",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {receipt.caption}
+              </p>
+            )}
+            <div
+              style={{
+                background: "rgba(99, 102, 241, 0.08)",
+                border: "1px solid rgba(99, 102, 241, 0.2)",
+                borderRadius: "12px",
+                padding: "10px 12px",
+                color: "#cbd5e1",
+                fontSize: "0.85rem",
+              }}
+            >
+              <strong style={{ color: "#e2e8f0" }}>
+                {getReceiptTypeLabel(receipt.type)}
+              </strong>
+              {" · "}
+              PKR {Number(receipt.amount).toLocaleString()}
+            </div>
+          </div>
+        );
+      }
 
       // Don't mask Stripe source method
       const displaySenderMobile = String(receipt.senderMobile).includes("Visa")
@@ -180,17 +280,7 @@ const renderPostContent = (content, defaultColor = "#cbd5e1") => {
                 style={{ display: "flex", alignItems: "center", gap: "8px" }}
               >
                              <span style={{ fontSize: "0.85rem", color: "#94a3b8", fontWeight: 600 }}>
-                {receipt.type === "EXTERNAL_TRANSFER" 
-                  ? "Local Bank Transfer" 
-                  : receipt.type === "ADD_MONEY" 
-                    ? "Wallet Deposit" 
-                    : receipt.type === "BILL_PAYMENT"
-                      ? "Utility Bill Payment"
-                      : receipt.type === "SPLIT_PAYMENT"
-                        ? "Split Bill Payment"
-                        : receipt.type === "QR_PAYMENT"
-                          ? "Scan & Pay (QR)"
-                          : "Wallexa P2P Transfer"}
+                {getReceiptTypeLabel(receipt.type)}
               </span>
               </div>
               <span
@@ -501,8 +591,9 @@ export default function Dashboard({ userData, onLogout }) {
   const [activeCommentPost, setActiveCommentPost] = useState(null); //   Comments bottom sheet control
   const [commentText, setCommentText] = useState(""); //   Comment input text field
   const [commentSubmitting, setCommentSubmitting] = useState(false); //   Double submission block karne ke liye
-  const [reactionSubmitting, setReactionSubmitting] = useState(false); //   Prevents duplicate fast reaction clicks
-  const [hoveredPostReactId, setHoveredPostReactId] = useState(null); //   Reaction picker popup show/hide control
+  const [reactionSubmittingPostId, setReactionSubmittingPostId] = useState(null); //   Prevents duplicate fast reaction clicks per post
+  const [hoveredPostReactId, setHoveredPostReactId] = useState(null); //   Reaction picker popup show/hide control (desktop hover)
+  const [activePostReactPickerId, setActivePostReactPickerId] = useState(null); //   Reaction picker open via tap/click (mobile + desktop)
   const [activeReactionsPost, setActiveReactionsPost] = useState(null); //   Reactions popup modal control
   const [reactionsFilterTab, setReactionsFilterTab] = useState("all"); //   Active reactions filter tab ('all' | 'like' | 'love' etc)
   const [publicUserPosts, setPublicUserPosts] = useState([]); // Viewed user ke posts display karne ke liye
@@ -1442,10 +1533,67 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
-  //   Handle Post Reaction (React, Update, or Toggle Off)
+  const closeReactionPicker = () => {
+    setHoveredPostReactId(null);
+    setActivePostReactPickerId(null);
+  };
+
+  const isReactionPickerOpen = (postId) =>
+    hoveredPostReactId === postId || activePostReactPickerId === postId;
+
+  const applyReactionUpdate = (postId, reactions) => {
+    const updater = (prev) =>
+      prev.map((p) => (p._id === postId ? { ...p, reactions } : p));
+    setHomeFeedPosts(updater);
+    setPublicUserPosts(updater);
+    setActiveCommentPost((prev) =>
+      prev && prev._id === postId ? { ...prev, reactions } : prev,
+    );
+    setActiveReactionsPost((prev) =>
+      prev && prev._id === postId ? { ...prev, reactions } : prev,
+    );
+  };
+
+  //   Handle Post Reaction (React, Update, or Toggle Off) — optimistic UI for instant feedback
   const handlePostReact = async (postId, type) => {
-    if (reactionSubmitting) return; // Prevent fast consecutive clicks
-    setReactionSubmitting(true);
+    if (reactionSubmittingPostId === postId) return;
+
+    const reactorMeta = {
+      displayName: profile?.displayName || user?.firstName || "You",
+      profilePicture:
+        profilePicture || profile?.profilePicture || user?.profilePicture || null,
+    };
+
+    let previousReactions = null;
+    const withOptimistic = (reactions) => {
+      if (previousReactions === null) previousReactions = reactions;
+      return computeOptimisticReactions(reactions, userId, type, reactorMeta);
+    };
+
+    setHomeFeedPosts((prev) =>
+      prev.map((p) =>
+        p._id === postId ? { ...p, reactions: withOptimistic(p.reactions) } : p,
+      ),
+    );
+    setPublicUserPosts((prev) =>
+      prev.map((p) =>
+        p._id === postId ? { ...p, reactions: withOptimistic(p.reactions) } : p,
+      ),
+    );
+    setActiveCommentPost((prev) =>
+      prev && prev._id === postId
+        ? { ...prev, reactions: withOptimistic(prev.reactions) }
+        : prev,
+    );
+    setActiveReactionsPost((prev) =>
+      prev && prev._id === postId
+        ? { ...prev, reactions: withOptimistic(prev.reactions) }
+        : prev,
+    );
+
+    closeReactionPicker();
+    setReactionSubmittingPostId(postId);
+
     try {
       const res = await fetch(
         `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}/react`,
@@ -1460,20 +1608,129 @@ export default function Dashboard({ userData, onLogout }) {
       );
       const data = await res.json();
       if (res.ok) {
-        setHoveredPostReactId(null);
-      } else {
+        if (data.reactions) {
+          applyReactionUpdate(postId, data.reactions);
+        }
+      } else if (previousReactions !== null) {
+        applyReactionUpdate(postId, previousReactions);
         setToast({ title: "Error", msg: data.message, type: "error" });
       }
     } catch {
+      if (previousReactions !== null) {
+        applyReactionUpdate(postId, previousReactions);
+      }
       setToast({
         title: "Error",
         msg: "Network error updating reaction.",
         type: "error",
       });
     } finally {
-      setReactionSubmitting(false); // Enable clicks again
+      setReactionSubmittingPostId(null);
     }
   };
+
+  const renderPostReactionControls = (post) => {
+    const myReaction = findMyReaction(post.reactions, userId);
+    const pickerOpen = isReactionPickerOpen(post._id);
+
+    return (
+      <div
+        style={{ position: "relative" }}
+        data-post-reaction-picker
+        onMouseEnter={() => setHoveredPostReactId(post._id)}
+        onMouseLeave={() => setHoveredPostReactId(null)}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setActivePostReactPickerId((prev) =>
+              prev === post._id ? null : post._id,
+            )
+          }
+          style={{
+            background: "none",
+            border: "none",
+            color: myReaction ? REACTION_COLORS[myReaction.type] : "#94a3b8",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "pointer",
+            fontSize: "0.9rem",
+            fontWeight: 600,
+            transition: "color 0.2s",
+          }}
+        >
+          {myReaction
+            ? `${REACTION_EMOJIS[myReaction.type]} ${REACTION_LABELS[myReaction.type]}`
+            : "React"}
+        </button>
+
+        {pickerOpen && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(100% - 2px)",
+              left: "0",
+              background: "#1e293b",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "20px",
+              padding: "5px 10px",
+              display: "flex",
+              gap: "10px",
+              zIndex: 10,
+              boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {REACTION_TYPES.map((type) => (
+              <span
+                key={type}
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePostReact(post._id, type);
+                }}
+                style={{
+                  fontSize: "1.3rem",
+                  cursor: "pointer",
+                  transition: "transform 0.1s",
+                  transform:
+                    myReaction?.type === type ? "scale(1.25)" : "scale(1)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "scale(1.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform =
+                    myReaction?.type === type ? "scale(1.25)" : "scale(1)";
+                }}
+              >
+                {REACTION_EMOJIS[type]}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    if (!activePostReactPickerId) return;
+
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest("[data-post-reaction-picker]")) {
+        setActivePostReactPickerId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [activePostReactPickerId]);
 
   //   Handle Social notification click (Opens post comments instantly)
   const handleSocialNotificationClick = async (notif) => {
@@ -3375,13 +3632,6 @@ export default function Dashboard({ userData, onLogout }) {
     });
   };
 
-  const removeFriend = (index) => {
-    if (splitForm.friends.length > 1) {
-      const newFriends = splitForm.friends.filter((_, i) => i !== index);
-      setSplitForm({ ...splitForm, friends: newFriends });
-    }
-  };
-
   // --- RENDERERS ---
   const renderHome = () => (
     <div className="view-container">
@@ -4021,9 +4271,9 @@ export default function Dashboard({ userData, onLogout }) {
                     marginBottom: "25px",
                   }}
                 >
-                  Connect with friends securely! By activating social feed, you
-                  can search friends using usernames, share transaction receipts
-                  with hidden amounts, and react to payments.
+                  Connect with friends securely! Search people by name, share
+                  transaction receipts with hidden amounts, and react to
+                  payments.
                 </p>
                 <button
                   className="primary-button"
@@ -4041,7 +4291,7 @@ export default function Dashboard({ userData, onLogout }) {
                     marginBottom: "10px",
                   }}
                 >
-                  Choose a Username
+                  Choose Your Search ID
                 </h3>
                 <p
                   style={{
@@ -4051,8 +4301,8 @@ export default function Dashboard({ userData, onLogout }) {
                     lineHeight: "1.5",
                   }}
                 >
-                  Your mobile number and email will remain private. Friends will
-                  search you using this unique username.
+                  Pick a unique ID so friends can find you. It stays hidden on
+                  your feed — only your display name is shown publicly.
                 </p>
 
                 {/* ?? Display Name Input */}
@@ -4071,27 +4321,15 @@ export default function Dashboard({ userData, onLogout }) {
                   className="form-group"
                   style={{ marginBottom: "20px", position: "relative" }}
                 >
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: "15px",
-                      top: "12px",
-                      color: "#6366f1",
-                      fontWeight: 700,
-                      fontSize: "1.1rem",
-                    }}
-                  >
-                    @
-                  </div>
                   <input
                     className="form-input"
-                    placeholder="e.g. John"
+                    placeholder="Search ID (e.g. john.doe)"
                     value={usernameInput}
                     onChange={(e) => handleUsernameChange(e.target.value)}
                     style={{
-                      paddingLeft: "35px",
                       fontSize: "1.05rem",
                       letterSpacing: "0.5px",
+                      padding: "12px 15px",
                     }}
                     required
                   />
@@ -4838,17 +5076,7 @@ export default function Dashboard({ userData, onLogout }) {
                             new Set(post.reactions.map((r) => r.type)),
                           )
                             .slice(0, 3)
-                            .map((type) => {
-                              const emojis = {
-                                	
-like: "👍",
-                                love: "❤️",
-                                haha: "😂",
-                                sad: "😢",
-                                angry: "😠",
-                              };
-                              return emojis[type];
-                            })
+                            .map((type) => REACTION_EMOJIS[type])
                             .join("")}
                         </span>
                         <span style={{ fontWeight: 500 }}>
@@ -4869,128 +5097,7 @@ like: "👍",
                         borderTop: "1px solid rgba(255, 255, 255, 0.05)",
                       }}
                     >
-                      {/* React Button & Hover Picker */}
-                      <div
-                        style={{ position: "relative" }}
-                        onMouseEnter={() => setHoveredPostReactId(post._id)}
-                        onMouseLeave={() => setHoveredPostReactId(null)}
-                      >
-                        {(() => {
-                          const myReaction =
-                            post.reactions &&
-                            post.reactions.find(
-                              (r) => (r.user._id || r.user) === userId,
-                            );
-                          const emojiMap = {
-                            like: "👍",
-                            love: "❤️",
-                            haha: "😂",
-                            sad: "😢",
-                            angry: "😠",
-                          };
-                          const labelMap = {
-                            like: "Like",
-                            love: "Love",
-                            haha: "Haha",
-                            sad: "Sad",
-                            angry: "Angry",
-                          };
-                          const colorMap = {
-                            like: "#60a5fa",
-                            love: "#f43f5e",
-                            haha: "#fbbf24",
-                            sad: "#60a5fa",
-                            angry: "#f97316",
-                          };
-
-                          return (
-                            <>
-                              <button
-                                onClick={() =>
-                                  handlePostReact(
-                                    post._id,
-                                    myReaction ? myReaction.type : "like",
-                                  )
-                                }
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  color: myReaction
-                                    ? colorMap[myReaction.type]
-                                    : "#94a3b8",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "6px",
-                                  cursor: "pointer",
-                                  fontSize: "0.9rem",
-                                  fontWeight: 600,
-                                  transition: "color 0.2s",
-                                }}
-                              >
-                                {myReaction
-                                  ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
-                                  : "React"}
-                              </button>
-
-                              {/* Hover Reactions Popup */}
-                              {hoveredPostReactId === post._id && (
-                                <div
-                                  style={{
-                                    position: "absolute",
-                                    bottom: "calc(100% - 2px)",
-                                    left: "0",
-                                    background: "#1e293b",
-                                    border:
-                                      "1px solid rgba(255, 255, 255, 0.08)",
-                                    borderRadius: "20px",
-                                    padding: "5px 10px",
-                                    display: "flex",
-                                    gap: "10px",
-                                    zIndex: 10,
-                                    boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
-                                  }}
-                                >
-                                  {["like", "love", "haha", "sad", "angry"].map(
-                                    (type) => {
-                                      const emojis = {
-                                        like: "👍",
-                                        love: "❤️",
-                                        haha: "😂",
-                                        sad: "😢",
-                                        angry: "😠",
-                                      };
-                                      return (
-                                        <span
-                                          key={type}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handlePostReact(post._id, type);
-                                          }}
-                                          style={{
-                                            fontSize: "1.3rem",
-                                            cursor: "pointer",
-                                            transition: "transform 0.1s",
-                                          }}
-                                          onMouseEnter={(e) =>
-                                            (e.target.style.transform =
-                                              "scale(1.3)")
-                                          }
-                                          onMouseLeave={(e) =>
-                                            (e.target.style.transform =
-                                              "scale(1)")
-                                          }
-                                        >
-                                          {emojis[type]}
-                                        </span>
-                                      );
-                                    },
-                                  )}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
+                      {renderPostReactionControls(post)}
 
                       <button
                         onClick={() => {
@@ -5641,16 +5748,7 @@ like: "👍",
                     <span>
                       {Array.from(new Set(post.reactions.map((r) => r.type)))
                         .slice(0, 3)
-                        .map((type) => {
-                          const emojis = {
-                            like: "👍",
-                            love: "❤️",
-                            haha: "😂",
-                            sad: "😢",
-                            angry: "😠",
-                          };
-                          return emojis[type];
-                        })
+                        .map((type) => REACTION_EMOJIS[type])
                         .join("")}
                     </span>
                     <span style={{ fontWeight: 500 }}>
@@ -5671,126 +5769,7 @@ like: "👍",
                     borderTop: "1px solid rgba(255, 255, 255, 0.05)",
                   }}
                 >
-                  {/* React Button & Hover Picker */}
-                  <div
-                    style={{ position: "relative" }}
-                    onMouseEnter={() => setHoveredPostReactId(post._id)}
-                    onMouseLeave={() => setHoveredPostReactId(null)}
-                  >
-                    {(() => {
-                      const myReaction =
-                        post.reactions &&
-                        post.reactions.find(
-                          (r) => (r.user._id || r.user) === userId,
-                        );
-                      const emojiMap = {
-                        like: "👍",
-                        love: "❤️",
-                        haha: "😂",
-                        sad: "😢",
-                        angry: "😠",
-                      };
-                      const labelMap = {
-                        like: "Like",
-                        love: "Love",
-                        haha: "Haha",
-                        sad: "Sad",
-                        angry: "Angry",
-                      };
-                      const colorMap = {
-                        like: "#60a5fa",
-                        love: "#f43f5e",
-                        haha: "#fbbf24",
-                        sad: "#60a5fa",
-                        angry: "#f97316",
-                      };
-
-                      return (
-                        <>
-                          <button
-                            onClick={() =>
-                              handlePostReact(
-                                post._id,
-                                myReaction ? myReaction.type : "like",
-                              )
-                            }
-                            style={{
-                              background: "none",
-                              border: "none",
-                              color: myReaction
-                                ? colorMap[myReaction.type]
-                                : "#94a3b8",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              cursor: "pointer",
-                              fontSize: "0.9rem",
-                              fontWeight: 600,
-                              transition: "color 0.2s",
-                            }}
-                          >
-                            {myReaction
-                              ? `${emojiMap[myReaction.type]} ${labelMap[myReaction.type]}`
-                              : "React"}
-                          </button>
-
-                          {/* Hover Reactions Popup */}
-                          {hoveredPostReactId === post._id && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                bottom: "calc(100% - 2px)",
-                                left: "0",
-                                background: "#1e293b",
-                                border: "1px solid rgba(255, 255, 255, 0.08)",
-                                borderRadius: "20px",
-                                padding: "5px 10px",
-                                display: "flex",
-                                gap: "10px",
-                                zIndex: 10,
-                                boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
-                              }}
-                            >
-                              {["like", "love", "haha", "sad", "angry"].map(
-                                (type) => {
-                                  const emojis = {
-                                    like: "👍",
-                                    love: "❤️",
-                                    haha: "😂",
-                                    sad: "😢",
-                                    angry: "😠",
-                                  };
-                                  return (
-                                    <span
-                                      key={type}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handlePostReact(post._id, type);
-                                      }}
-                                      style={{
-                                        fontSize: "1.3rem",
-                                        cursor: "pointer",
-                                        transition: "transform 0.1s",
-                                      }}
-                                      onMouseEnter={(e) =>
-                                        (e.target.style.transform =
-                                          "scale(1.3)")
-                                      }
-                                      onMouseLeave={(e) =>
-                                        (e.target.style.transform = "scale(1)")
-                                      }
-                                    >
-                                      {emojis[type]}
-                                    </span>
-                                  );
-                                },
-                              )}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                  {renderPostReactionControls(post)}
 
                   <button
                     onClick={() => {
@@ -7280,19 +7259,6 @@ like: "👍",
                             disabled={isFrozen}
                           />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFriend(index)}
-                          style={{
-                            padding: "8px",
-                            color: "#ef4444",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <X size={20} />
-                        </button>
                       </div>
                       <div
                         style={{
@@ -10854,9 +10820,10 @@ like: "👍",
                 border: "1px solid rgba(255, 255, 255, 0.05)",
                 borderBottom: "none",
                 padding: "24px",
-                maxHeight: "80vh",
+                maxHeight: "85vh",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
                 boxShadow: "0 -10px 40px rgba(0, 0, 0, 0.5)",
               }}
             >
@@ -10866,9 +10833,10 @@ like: "👍",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: "20px",
+                  marginBottom: "16px",
                   borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                   paddingBottom: "12px",
+                  flexShrink: 0,
                 }}
               >
                 <h3 style={{ color: "#f8fafc", fontSize: "1.2rem", margin: 0 }}>
@@ -10879,33 +10847,39 @@ like: "👍",
                   )
                 </h3>
                 <button
+                  type="button"
+                  className="close-btn"
+                  aria-label="Close comments"
                   onClick={() => setActiveCommentPost(null)}
                   style={{
                     background: "rgba(255, 255, 255, 0.05)",
-                    border: "none",
-                    color: "#94a3b8",
                     width: "32px",
                     height: "32px",
                     borderRadius: "50%",
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "1.1rem",
                   }}
                 >
-                  ?
+                  {"\u00D7"}
                 </button>
               </div>
 
-              {/* Original Post Card */}
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  paddingRight: "4px",
+                  marginBottom: "12px",
+                }}
+              >
+              {/* Original Post Preview */}
               <div
                 style={{
                   background: "rgba(255, 255, 255, 0.02)",
                   border: "1px solid rgba(255, 255, 255, 0.05)",
                   borderRadius: "16px",
                   padding: "15px",
-                  marginBottom: "20px",
+                  marginBottom: "16px",
                   display: "flex",
                   flexDirection: "column",
                   gap: "10px",
@@ -10961,29 +10935,22 @@ like: "👍",
                     </div>
                   </div>
                 </div>
-                <p
+                <div
                   style={{
                     color: "#e2e8f0",
                     fontSize: "0.95rem",
                     margin: 0,
                     lineHeight: "1.4",
-                    whiteSpace: "pre-wrap",
                   }}
                 >
-                  {renderPostContent(activeCommentPost.content, "#e2e8f0")}
-                </p>
+                  {renderPostContent(activeCommentPost.content, "#e2e8f0", {
+                    compact: true,
+                  })}
+                </div>
               </div>
 
-              {/* Scrollable Comments Block */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  marginBottom: "20px",
-                  paddingRight: "5px",
-                  minHeight: "150px",
-                }}
-              >
+              {/* Comments List */}
+              <div style={{ paddingBottom: "8px" }}>
                 {!activeCommentPost.comments ||
                 activeCommentPost.comments.length === 0 ? (
                   <div
@@ -11129,17 +11096,19 @@ like: "👍",
                   </div>
                 )}
               </div>
+              </div>
 
-              {/* Input Submission Footer */}
               {/* Input Submission Footer */}
               <form
                 onSubmit={handleCommentSubmit}
                 style={{
                   display: "flex",
-                  flexDirection: "column", //   Input aur counter ko vertical list me stack karein
+                  flexDirection: "column",
                   gap: "8px",
-                  borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                  borderTop: "1px solid rgba(255, 255, 255, 0.08)",
                   paddingTop: "15px",
+                  flexShrink: 0,
+                  background: "var(--bg-card)",
                 }}
               >
                 <div
@@ -11242,6 +11211,9 @@ like: "👍",
                   Friend Requests ({friendRequests.length})
                 </h3>
                 <button
+                  type="button"
+                  className="close-btn"
+                  aria-label="Close friend requests"
                   onClick={() => setShowRequestsModal(false)}
                   style={{
                     background: "none",
@@ -11251,7 +11223,7 @@ like: "👍",
                     cursor: "pointer",
                   }}
                 >
-                  ?
+                  {"\u00D7"}
                 </button>
               </div>
 
@@ -11459,6 +11431,9 @@ like: "👍",
                   Post Reactions
                 </h3>
                 <button
+                  type="button"
+                  className="close-btn"
+                  aria-label="Close reactions"
                   onClick={() => setActiveReactionsPost(null)}
                   style={{
                     background: "none",
@@ -11468,7 +11443,7 @@ like: "👍",
                     cursor: "pointer",
                   }}
                 >
-                  ?
+                  {"\u00D7"}
                 </button>
               </div>
 
