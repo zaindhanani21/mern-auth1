@@ -1612,6 +1612,14 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   const handleDeleteComment = async (postId, commentId) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this comment? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
     setOpenCommentMenuId(null);
     removeCommentFromState(postId, commentId);
     try {
@@ -1664,6 +1672,12 @@ export default function Dashboard({ userData, onLogout }) {
       return;
     }
 
+    if (
+      !window.confirm("Save changes to this comment?")
+    ) {
+      return;
+    }
+
     setEditingCommentId(null);
     setEditingCommentText("");
     updateCommentInState(postId, commentId, { content: cleanText });
@@ -1705,6 +1719,14 @@ export default function Dashboard({ userData, onLogout }) {
   };
 
   const handleDeletePost = async (postId) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this post? All comments and reactions will be removed.",
+      )
+    ) {
+      return;
+    }
+
     setOpenPostMenuId(null);
     removePostFromState(postId);
     try {
@@ -11472,6 +11494,13 @@ export default function Dashboard({ userData, onLogout }) {
                                         <button
                                           type="button"
                                           onClick={() => {
+                                            if (
+                                              !window.confirm(
+                                                "Do you want to edit this comment?",
+                                              )
+                                            ) {
+                                              return;
+                                            }
                                             setOpenCommentMenuId(null);
                                             setEditingCommentId(comment._id);
                                             setEditingCommentText(comment.content);
