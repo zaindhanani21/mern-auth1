@@ -609,64 +609,78 @@ export default function Dashboard({ userData, onLogout }) {
       }
     };
   }, []);
+   const prepareReceiptForPdf = (elementId) => {
+    const element = document.getElementById(elementId);
+    if (!element) return null;
+
+    const clonedElement = element.cloneNode(true);
+    clonedElement.querySelectorAll(".no-print").forEach((el) => el.remove());
+
+    clonedElement.classList.remove("modal-card");
+    clonedElement.style.boxShadow = "none";
+    clonedElement.style.border = "none";
+    clonedElement.style.maxHeight = "none";
+    clonedElement.style.overflow = "visible";
+    clonedElement.style.height = "auto";
+    clonedElement.style.maxWidth = "520px";
+    clonedElement.style.width = "520px";
+    clonedElement.style.position = "fixed";
+    clonedElement.style.left = "-99999px";
+    clonedElement.style.top = "0";
+    clonedElement.style.zIndex = "-1";
+
+    document.body.appendChild(clonedElement);
+    return clonedElement;
+  };
+
+  const getPdfOptions = (filename, height) => ({
+    margin: [12, 12, 12, 12],
+    filename,
+    image: { type: "jpeg", quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#1e293b",
+      scrollY: 0,
+      scrollX: 0,
+      height,
+      windowHeight: height,
+    },
+    jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+  });
+
+  const cleanupReceiptClone = (clonedElement) => {
+    if (clonedElement?.parentNode) {
+      clonedElement.parentNode.removeChild(clonedElement);
+    }
+  };
+
   const handleDownloadPdf = (
     elementId,
     filename = "transaction_receipt.pdf",
   ) => {
-    const element = document.getElementById(elementId);
-    if (!element) return;
+    const clonedElement = prepareReceiptForPdf(elementId);
+    if (!clonedElement) return;
 
-    // Clone element so we can remove buttons without affecting the UI
-    const clonedElement = element.cloneNode(true);
+    const captureHeight = clonedElement.scrollHeight;
+    const opt = getPdfOptions(filename, captureHeight);
 
-    // Remove buttons or elements with class 'no-print' from the cloned receipt
-    const noPrintElements = clonedElement.querySelectorAll(".no-print");
-    noPrintElements.forEach((el) => el.remove());
-
-    // Styling adjustments for PDF
-    clonedElement.style.boxShadow = "none";
-    clonedElement.style.border = "none";
-
-    const opt = {
-      margin: 10,
-      filename: filename,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#1e293b", // Premium Dark Blue background
-      },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    };
-
-    window.html2pdf().from(clonedElement).set(opt).save();
+    window
+      .html2pdf()
+      .from(clonedElement)
+      .set(opt)
+      .save()
+      .finally(() => cleanupReceiptClone(clonedElement));
   };
 
   const handleSharePdf = (elementId, filename = "transaction_receipt.pdf") => {
-    const element = document.getElementById(elementId);
-    if (!element) return;
+    const clonedElement = prepareReceiptForPdf(elementId);
+    if (!clonedElement) return;
 
-    // Clone element to clean it up before sharing (removes buttons)
-    const clonedElement = element.cloneNode(true);
-    const noPrintElements = clonedElement.querySelectorAll(".no-print");
-    noPrintElements.forEach((el) => el.remove());
+    const captureHeight = clonedElement.scrollHeight;
+    const opt = getPdfOptions(filename, captureHeight);
 
-    clonedElement.style.boxShadow = "none";
-    clonedElement.style.border = "none";
-
-    const opt = {
-      margin: 10,
-      filename: filename,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#1e293b",
-      },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    };
-
-    // Output PDF as blob and trigger native Web Share
     window
       .html2pdf()
       .from(clonedElement)
@@ -675,7 +689,6 @@ export default function Dashboard({ userData, onLogout }) {
       .then((pdfBlob) => {
         const file = new File([pdfBlob], filename, { type: "application/pdf" });
 
-        // Check if native sharing is supported with this file
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           navigator
             .share({
@@ -687,7 +700,6 @@ export default function Dashboard({ userData, onLogout }) {
               console.log("Share cancelled or failed:", err);
             });
         } else {
-          // Fallback: Agar desktop browser ho jahan direct files share nahi ho saktin, toh PDF download kar dega
           window.html2pdf().from(clonedElement).set(opt).save();
           setToast({
             title: "PDF Downloaded",
@@ -695,9 +707,9 @@ export default function Dashboard({ userData, onLogout }) {
             type: "info",
           });
         }
-      });
+      })
+      .finally(() => cleanupReceiptClone(clonedElement));
   };
-
   // --- INITIALIZATION ---
   const getToken = () => userData?.token || localStorage.getItem("userToken");
 
@@ -6609,7 +6621,7 @@ like: "👍",
                       }}
                       disabled={loading}
                     >
-                      {loading ? "Processing..." : "? Confirm & Pay"}
+                      {loading ? "Processing..." : "Confirm & Pay"}
                     </button>
                     <button
                       className="secondary-button"
@@ -10513,7 +10525,7 @@ like: "👍",
                   onClick={handleSend}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "? Confirm & Send"}
+                  {loading ? "Sending..." : "Confirm & Send"}
                 </button>
                 <button
                   className="secondary-button"
@@ -10627,7 +10639,7 @@ like: "👍",
                   onClick={handleQrSend}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "? Confirm & Send"}
+                  {loading ? "Sending..." : "Confirm & Send"}
                 </button>
                 <button
                   className="secondary-button"
@@ -10757,7 +10769,7 @@ like: "👍",
                   onClick={handleExternalTransfer}
                   disabled={loading}
                 >
-                  {loading ? "Sending..." : "? Confirm Transfer"}
+                  {loading ? "Sending..." : "Confirm Transfer"}
                 </button>
                 <button
                   className="secondary-button"
