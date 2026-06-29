@@ -1476,6 +1476,155 @@ router.post("/posts/:postId/react", protect, async (req, res) => {
   }
 });
 
+// 🟢 DELETE /api/profile/posts/:postId - Delete own post (post author only)
+router.delete("/posts/:postId", protect, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found!" });
+    }
+
+    if (post.author.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "You are not authorized to delete this post!" });
+    }
+
+    await Post.findByIdAndDelete(postId);
+
+    if (req.io) {
+      req.io.emit("post_deleted", { postId });
+    }
+
+    res.json({ message: "Post deleted successfully!" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// 🟢 PATCH /api/profile/posts/:postId/comments/:commentId - Edit own comment
+router.patch("/posts/:postId/comments/:commentId", protect, async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res
+        .status(400)
+        .json({ message: "Comment content cannot be empty!" });
+    }
+
+    let cleanContent = content.replace(/\s+/g, " ").trim();
+    cleanContent = cleanContent.replace(/<[^>]*>/g, "");
+    if (!cleanContent) {
+      return res
+        .status(400)
+        .json({ message: "Comment cannot contain only tags or spaces!" });
+    }
+    if (cleanContent.length > 300) {
+      return res
+        .status(400)
+        .json({ message: "Comment cannot be longer than 300 characters." });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found!" });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found!" });
+    }
+
+    if (comment.author.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ message: "You can only edit your own comments!" });
+    }
+
+    comment.content = cleanContent;
+    await post.save();
+
+    const commenterProfile = await SocialProfile.findOne({
+      userId: req.user._id,
+    });
+
+    const populatedComment = {
+      _id: comment._id,
+      content: comment.content,
+      createdAt: comment.createdAt,
+      author: {
+        _id: req.user._id,
+        id: req.user._id,
+        firstName: commenterProfile
+          ? commenterProfile.displayName
+          : req.user.firstName,
+        lastName: "",
+        profilePicture: commenterProfile
+          ? commenterProfile.profilePicture
+          : req.user.profilePicture,
+      },
+    };
+
+    if (req.io) {
+      req.io.emit("comment_updated", {
+        postId,
+        comment: populatedComment,
+      });
+    }
+
+    res.json({
+      message: "Comment updated successfully!",
+      comment: populatedComment,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// 🟢 DELETE /api/profile/posts/:postId/comments/:commentId - Delete comment (author or post owner)
+router.delete(
+  "/posts/:postId/comments/:commentId",
+  protect,
+  async (req, res) => {
+    try {
+      const { postId, commentId } = req.params;
+      const post = await Post.findById(postId);
+      if (!post) {
+        return res.status(404).json({ message: "Post not found!" });
+      }
+
+      const comment = post.comments.id(commentId);
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found!" });
+      }
+
+      const isCommentAuthor =
+        comment.author.toString() === req.user._id.toString();
+      const isPostAuthor = post.author.toString() === req.user._id.toString();
+
+      if (!isCommentAuthor && !isPostAuthor) {
+        return res
+          .status(403)
+          .json({ message: "You are not authorized to delete this comment!" });
+      }
+
+      post.comments.pull(commentId);
+      await post.save();
+
+      if (req.io) {
+        req.io.emit("comment_deleted", { postId, commentId });
+      }
+
+      res.json({ message: "Comment deleted successfully!" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
 // POST /api/profile/change-password - Profile se password change karna
 router.post("/change-password", protect, async (req, res) => {
   const { currentPassword, newPassword } = req.body;

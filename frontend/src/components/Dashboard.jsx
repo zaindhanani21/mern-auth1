@@ -29,6 +29,7 @@ import {
   Edit2,
   Lock,
   MessageCircle,
+  MoreVertical,
 } from "lucide-react";
 import "./Css/ModernDashboard.css";
 
@@ -62,6 +63,9 @@ const getReactionUserId = (reaction) =>
 
 const findMyReaction = (reactions, userId) =>
   (reactions || []).find((r) => getReactionUserId(r) === String(userId));
+
+const getEntityUserId = (entity) =>
+  String(entity?._id || entity?.id || entity || "");
 
 const computeOptimisticReactions = (reactions, userId, type, meta) => {
   const uid = String(userId);
@@ -591,6 +595,10 @@ export default function Dashboard({ userData, onLogout }) {
   const [activeCommentPost, setActiveCommentPost] = useState(null); //   Comments bottom sheet control
   const [commentText, setCommentText] = useState(""); //   Comment input text field
   const [commentSubmitting, setCommentSubmitting] = useState(false); //   Double submission block karne ke liye
+  const [openCommentMenuId, setOpenCommentMenuId] = useState(null); //   Comment 3-dot menu
+  const [openPostMenuId, setOpenPostMenuId] = useState(null); //   Post 3-dot menu (delete own post)
+  const [editingCommentId, setEditingCommentId] = useState(null); //   Comment edit mode
+  const [editingCommentText, setEditingCommentText] = useState(""); //   Comment edit text
   const [reactionSubmittingPostId, setReactionSubmittingPostId] = useState(null); //   Prevents duplicate fast reaction clicks per post
   const [hoveredPostReactId, setHoveredPostReactId] = useState(null); //   Reaction picker popup show/hide control (desktop hover)
   const [activePostReactPickerId, setActivePostReactPickerId] = useState(null); //   Reaction picker open via tap/click (mobile + desktop)
@@ -1533,6 +1541,273 @@ export default function Dashboard({ userData, onLogout }) {
     }
   };
 
+  const getCommentPermissions = (comment, post) => {
+    const uid = getEntityUserId(userId);
+    const commentAuthorId = getEntityUserId(comment?.author);
+    const postAuthorId = getEntityUserId(post?.author);
+    return {
+      canEdit: commentAuthorId === uid,
+      canDelete: commentAuthorId === uid || postAuthorId === uid,
+    };
+  };
+
+  const isPostAuthor = (post) =>
+    getEntityUserId(post?.author) === getEntityUserId(userId);
+
+  const removeCommentFromState = (postId, commentId) => {
+    const updater = (prev) =>
+      prev.map((p) =>
+        p._id === postId
+          ? {
+              ...p,
+              comments: (p.comments || []).filter((c) => c._id !== commentId),
+            }
+          : p,
+      );
+    setHomeFeedPosts(updater);
+    setPublicUserPosts(updater);
+    setActiveCommentPost((prev) =>
+      prev && prev._id === postId
+        ? {
+            ...prev,
+            comments: (prev.comments || []).filter((c) => c._id !== commentId),
+          }
+        : prev,
+    );
+  };
+
+  const updateCommentInState = (postId, commentId, updatedComment) => {
+    const updater = (prev) =>
+      prev.map((p) =>
+        p._id === postId
+          ? {
+              ...p,
+              comments: (p.comments || []).map((c) =>
+                c._id === commentId ? { ...c, ...updatedComment } : c,
+              ),
+            }
+          : p,
+      );
+    setHomeFeedPosts(updater);
+    setPublicUserPosts(updater);
+    setActiveCommentPost((prev) =>
+      prev && prev._id === postId
+        ? {
+            ...prev,
+            comments: (prev.comments || []).map((c) =>
+              c._id === commentId ? { ...c, ...updatedComment } : c,
+            ),
+          }
+        : prev,
+    );
+  };
+
+  const removePostFromState = (postId) => {
+    setHomeFeedPosts((prev) => prev.filter((p) => p._id !== postId));
+    setPublicUserPosts((prev) => prev.filter((p) => p._id !== postId));
+    setActiveCommentPost((prev) => (prev && prev._id === postId ? null : prev));
+    setActiveReactionsPost((prev) =>
+      prev && prev._id === postId ? null : prev,
+    );
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+    setOpenCommentMenuId(null);
+    removeCommentFromState(postId, commentId);
+    try {
+      const res = await fetch(
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}/comments/${commentId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        fetchHomeFeed();
+        if (activeCommentPost?._id === postId) {
+          const postRes = await fetch(
+            `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}`,
+            { headers: { Authorization: `Bearer ${getToken()}` } },
+          );
+          if (postRes.ok) setActiveCommentPost(await postRes.json());
+        }
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      fetchHomeFeed();
+      setToast({
+        title: "Error",
+        msg: "Network error deleting comment.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleSaveCommentEdit = async (postId, commentId) => {
+    let cleanText = editingCommentText.replace(/\s+/g, " ").trim();
+    cleanText = cleanText.replace(/<[^>]*>/g, "");
+    if (!cleanText) {
+      setToast({
+        title: "Error",
+        msg: "Comment cannot be empty.",
+        type: "error",
+      });
+      return;
+    }
+    if (cleanText.length > 300) {
+      setToast({
+        title: "Limit Exceeded",
+        msg: "Comment cannot be longer than 300 characters.",
+        type: "error",
+      });
+      return;
+    }
+
+    setEditingCommentId(null);
+    setEditingCommentText("");
+    updateCommentInState(postId, commentId, { content: cleanText });
+
+    try {
+      const res = await fetch(
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}/comments/${commentId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ content: cleanText }),
+        },
+      );
+      const data = await res.json();
+      if (res.ok && data.comment) {
+        updateCommentInState(postId, commentId, data.comment);
+      } else {
+        fetchHomeFeed();
+        if (activeCommentPost?._id === postId) {
+          const postRes = await fetch(
+            `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}`,
+            { headers: { Authorization: `Bearer ${getToken()}` } },
+          );
+          if (postRes.ok) setActiveCommentPost(await postRes.json());
+        }
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      }
+    } catch {
+      fetchHomeFeed();
+      setToast({
+        title: "Error",
+        msg: "Network error updating comment.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    setOpenPostMenuId(null);
+    removePostFromState(postId);
+    try {
+      const res = await fetch(
+        `https://mern-auth1-qnmh.onrender.com/api/profile/posts/${postId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${getToken()}` },
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        fetchHomeFeed();
+        if (selectedPublicUser?.id) {
+          fetchPublicUserPosts(selectedPublicUser.id);
+        }
+        setToast({ title: "Error", msg: data.message, type: "error" });
+      } else {
+        setToast({
+          title: "Deleted",
+          msg: "Post removed successfully.",
+          type: "success",
+        });
+      }
+    } catch {
+      fetchHomeFeed();
+      setToast({
+        title: "Error",
+        msg: "Network error deleting post.",
+        type: "error",
+      });
+    }
+  };
+
+  const renderPostMenu = (post) => {
+    if (!isPostAuthor(post)) return null;
+
+    return (
+      <div
+        data-post-menu
+        style={{ position: "relative", marginLeft: "8px" }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenPostMenuId((prev) =>
+              prev === post._id ? null : post._id,
+            );
+          }}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#94a3b8",
+            cursor: "pointer",
+            padding: "4px",
+            display: "flex",
+            alignItems: "center",
+          }}
+          aria-label="Post options"
+        >
+          <MoreVertical size={18} />
+        </button>
+        {openPostMenuId === post._id && (
+          <div
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: 0,
+              marginTop: "4px",
+              background: "#1e293b",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "10px",
+              minWidth: "130px",
+              zIndex: 20,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => handleDeletePost(post._id)}
+              style={{
+                width: "100%",
+                background: "none",
+                border: "none",
+                color: "#f87171",
+                padding: "10px 14px",
+                textAlign: "left",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 500,
+              }}
+            >
+              Delete post
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const closeReactionPicker = () => {
     setHoveredPostReactId(null);
     setActivePostReactPickerId(null);
@@ -1731,6 +2006,26 @@ export default function Dashboard({ userData, onLogout }) {
       document.removeEventListener("touchstart", handleOutsideClick);
     };
   }, [activePostReactPickerId]);
+
+  useEffect(() => {
+    if (!openCommentMenuId && !openPostMenuId) return;
+
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest("[data-comment-menu]")) {
+        setOpenCommentMenuId(null);
+      }
+      if (!e.target.closest("[data-post-menu]")) {
+        setOpenPostMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("touchstart", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("touchstart", handleOutsideClick);
+    };
+  }, [openCommentMenuId, openPostMenuId]);
 
   //   Handle Social notification click (Opens post comments instantly)
   const handleSocialNotificationClick = async (notif) => {
@@ -1984,6 +2279,51 @@ export default function Dashboard({ userData, onLogout }) {
         }
         return prev;
       });
+    });
+
+    newSocket.on("comment_deleted", (data) => {
+      const { postId, commentId } = data;
+      const filterComments = (post) =>
+        post._id === postId
+          ? {
+              ...post,
+              comments: (post.comments || []).filter((c) => c._id !== commentId),
+            }
+          : post;
+      setHomeFeedPosts((prev) => prev.map(filterComments));
+      setPublicUserPosts((prev) => prev.map(filterComments));
+      setActiveCommentPost((prev) =>
+        prev && prev._id === postId ? filterComments(prev) : prev,
+      );
+    });
+
+    newSocket.on("comment_updated", (data) => {
+      const { postId, comment } = data;
+      const updateComments = (post) =>
+        post._id === postId
+          ? {
+              ...post,
+              comments: (post.comments || []).map((c) =>
+                c._id === comment._id ? { ...c, ...comment } : c,
+              ),
+            }
+          : post;
+      setHomeFeedPosts((prev) => prev.map(updateComments));
+      setPublicUserPosts((prev) => prev.map(updateComments));
+      setActiveCommentPost((prev) =>
+        prev && prev._id === postId ? updateComments(prev) : prev,
+      );
+    });
+
+    newSocket.on("post_deleted", (data) => {
+      setHomeFeedPosts((prev) => prev.filter((p) => p._id !== data.postId));
+      setPublicUserPosts((prev) => prev.filter((p) => p._id !== data.postId));
+      setActiveCommentPost((prev) =>
+        prev && prev._id === data.postId ? null : prev,
+      );
+      setActiveReactionsPost((prev) =>
+        prev && prev._id === data.postId ? null : prev,
+      );
     });
 
     //   Real-time Post Reaction update
@@ -5015,24 +5355,33 @@ export default function Dashboard({ userData, onLogout }) {
                         </div>
                       </div>
 
-                      {/* Right Side: Visibility Badge */}
+                      {/* Right Side: Visibility Badge + Post Menu */}
                       <div
                         style={{
-                          color: "#94a3b8",
-                          fontSize: "0.75rem",
-                          background: "rgba(255, 255, 255, 0.05)",
-                          padding: "4px 8px",
-                          borderRadius: "6px",
                           display: "flex",
                           alignItems: "center",
                           gap: "4px",
                         }}
                       >
-                        {post.visibility === "public"
-                          ? "Public"
-                          : post.visibility === "friends"
-                            ? "Friends"
-                            : "Private"}
+                        <div
+                          style={{
+                            color: "#94a3b8",
+                            fontSize: "0.75rem",
+                            background: "rgba(255, 255, 255, 0.05)",
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {post.visibility === "public"
+                            ? "Public"
+                            : post.visibility === "friends"
+                              ? "Friends"
+                              : "Private"}
+                        </div>
+                        {renderPostMenu(post)}
                       </div>
                     </div>
                     <p
@@ -5689,24 +6038,33 @@ export default function Dashboard({ userData, onLogout }) {
                     </div>
                   </div>
 
-                  {/* Right Side: Visibility Badge */}
+                  {/* Right Side: Visibility Badge + Post Menu */}
                   <div
                     style={{
-                      color: "#94a3b8",
-                      fontSize: "0.75rem",
-                      background: "rgba(255, 255, 255, 0.05)",
-                      padding: "4px 8px",
-                      borderRadius: "6px",
                       display: "flex",
                       alignItems: "center",
                       gap: "4px",
                     }}
                   >
-                    {post.visibility === "public"
-                      ? "Public"
-                      : post.visibility === "friends"
-                        ? "Friends"
-                        : "Private"}
+                    <div
+                      style={{
+                        color: "#94a3b8",
+                        fontSize: "0.75rem",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      {post.visibility === "public"
+                        ? "Public"
+                        : post.visibility === "friends"
+                          ? "Friends"
+                          : "Private"}
+                    </div>
+                    {renderPostMenu(post)}
                   </div>
                 </div>
                 <p
@@ -10996,7 +11354,14 @@ export default function Dashboard({ userData, onLogout }) {
                       gap: "15px",
                     }}
                   >
-                    {activeCommentPost.comments.map((comment) => (
+                    {activeCommentPost.comments.map((comment) => {
+                      const { canEdit, canDelete } = getCommentPermissions(
+                        comment,
+                        activeCommentPost,
+                      );
+                      const showMenu = canEdit || canDelete;
+
+                      return (
                       <div
                         key={comment._id}
                         style={{
@@ -11034,7 +11399,7 @@ export default function Dashboard({ userData, onLogout }) {
                             comment.author.firstName.charAt(0).toUpperCase()
                           )}
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div
                             style={{
                               background: "rgba(255, 255, 255, 0.03)",
@@ -11047,7 +11412,9 @@ export default function Dashboard({ userData, onLogout }) {
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
+                                alignItems: "flex-start",
                                 marginBottom: "4px",
+                                gap: "8px",
                               }}
                             >
                               <span
@@ -11059,17 +11426,183 @@ export default function Dashboard({ userData, onLogout }) {
                               >
                                 {comment.author.firstName} {comment.author.lastName}
                               </span>
+                              {showMenu && (
+                                <div
+                                  data-comment-menu
+                                  style={{ position: "relative", flexShrink: 0 }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setOpenCommentMenuId((prev) =>
+                                        prev === comment._id ? null : comment._id,
+                                      )
+                                    }
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: "#94a3b8",
+                                      cursor: "pointer",
+                                      padding: "2px",
+                                      display: "flex",
+                                      alignItems: "center",
+                                    }}
+                                    aria-label="Comment options"
+                                  >
+                                    <MoreVertical size={16} />
+                                  </button>
+                                  {openCommentMenuId === comment._id && (
+                                    <div
+                                      style={{
+                                        position: "absolute",
+                                        top: "100%",
+                                        right: 0,
+                                        marginTop: "4px",
+                                        background: "#1e293b",
+                                        border: "1px solid rgba(255,255,255,0.08)",
+                                        borderRadius: "10px",
+                                        minWidth: "120px",
+                                        zIndex: 30,
+                                        boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                                        overflow: "hidden",
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {canEdit && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setOpenCommentMenuId(null);
+                                            setEditingCommentId(comment._id);
+                                            setEditingCommentText(comment.content);
+                                          }}
+                                          style={{
+                                            width: "100%",
+                                            background: "none",
+                                            border: "none",
+                                            color: "#e2e8f0",
+                                            padding: "10px 14px",
+                                            textAlign: "left",
+                                            cursor: "pointer",
+                                            fontSize: "0.85rem",
+                                          }}
+                                        >
+                                          Edit
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeleteComment(
+                                              activeCommentPost._id,
+                                              comment._id,
+                                            )
+                                          }
+                                          style={{
+                                            width: "100%",
+                                            background: "none",
+                                            border: "none",
+                                            color: "#f87171",
+                                            padding: "10px 14px",
+                                            textAlign: "left",
+                                            cursor: "pointer",
+                                            fontSize: "0.85rem",
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            <p
-                              style={{
-                                color: "#cbd5e1",
-                                fontSize: "0.9rem",
-                                margin: 0,
-                                lineHeight: "1.4",
-                              }}
-                            >
-                              {comment.content}
-                            </p>
+                            {editingCommentId === comment._id ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "8px",
+                                }}
+                              >
+                                <input
+                                  className="form-input"
+                                  value={editingCommentText}
+                                  onChange={(e) =>
+                                    setEditingCommentText(e.target.value)
+                                  }
+                                  maxLength={300}
+                                  style={{
+                                    width: "100%",
+                                    background: "rgba(0,0,0,0.2)",
+                                    border: "1px solid rgba(255,255,255,0.08)",
+                                    borderRadius: "10px",
+                                    padding: "8px 12px",
+                                    color: "#f8fafc",
+                                    fontSize: "0.9rem",
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "8px",
+                                    justifyContent: "flex-end",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingCommentId(null);
+                                      setEditingCommentText("");
+                                    }}
+                                    style={{
+                                      background: "none",
+                                      border: "1px solid rgba(255,255,255,0.1)",
+                                      color: "#94a3b8",
+                                      borderRadius: "8px",
+                                      padding: "6px 12px",
+                                      cursor: "pointer",
+                                      fontSize: "0.8rem",
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSaveCommentEdit(
+                                        activeCommentPost._id,
+                                        comment._id,
+                                      )
+                                    }
+                                    style={{
+                                      background: "#6366f1",
+                                      border: "none",
+                                      color: "white",
+                                      borderRadius: "8px",
+                                      padding: "6px 12px",
+                                      cursor: "pointer",
+                                      fontSize: "0.8rem",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p
+                                style={{
+                                  color: "#cbd5e1",
+                                  fontSize: "0.9rem",
+                                  margin: 0,
+                                  lineHeight: "1.4",
+                                }}
+                              >
+                                {comment.content}
+                              </p>
+                            )}
                           </div>
                           <div
                             style={{
@@ -11092,7 +11625,8 @@ export default function Dashboard({ userData, onLogout }) {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </div>
