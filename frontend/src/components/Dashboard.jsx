@@ -2544,6 +2544,16 @@ export default function Dashboard({ userData, onLogout }) {
       }
     });
 
+    // Instant balance update (extension checkout, send money, etc.)
+    newSocket.on("balance_updated", (data) => {
+      if (data?.balance != null) {
+        setBalance(Number(data.balance));
+      }
+      if (activeTabRef.current === "history") {
+        fetchHistory();
+      }
+    });
+
     //   Real-time Friend Request Received
     newSocket.on("friend_request_received", (data) => {
       setToast({
@@ -2910,6 +2920,8 @@ export default function Dashboard({ userData, onLogout }) {
           msg: paymentMessage || "Money added successfully to your wallet!",
           type: "success",
         });
+        fetchData();
+        fetchNotifications();
       } else {
         setToast({
           title: "Failed ?",
@@ -2920,7 +2932,42 @@ export default function Dashboard({ userData, onLogout }) {
       // URL address bar se query string parameters ko clear kar dein taake refresh par dobara toast na aaye
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [profile]);
+  }, [profile, fetchData, fetchNotifications]);
+
+  // Refresh balance when user returns to Wallexa tab
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchData();
+      }
+    };
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+      window.removeEventListener("focus", refreshOnFocus);
+    };
+  }, [fetchData]);
+
+  // Chrome extension payment: update balance without page refresh
+  useEffect(() => {
+    const onExtensionBalanceRefresh = (event) => {
+      const { newBalance } = event.detail || {};
+      if (newBalance != null) {
+        setBalance(Number(newBalance));
+      } else {
+        fetchData();
+      }
+      fetchNotifications();
+      if (activeTabRef.current === "history") {
+        fetchHistory();
+      }
+    };
+    window.addEventListener("WallexaBalanceRefresh", onExtensionBalanceRefresh);
+    return () => {
+      window.removeEventListener("WallexaBalanceRefresh", onExtensionBalanceRefresh);
+    };
+  }, [fetchData, fetchHistory, fetchNotifications]);
 
   useEffect(() => {
     if (toast) {

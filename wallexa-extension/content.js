@@ -24,7 +24,7 @@ window.addEventListener("WallexaPaymentRequest", (event) => {
   });
 });
 
-// 3. Listen for messages from Popup and forward to Merchant Store page
+// 3. Listen for messages from Popup and forward to page
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "WallexaPaymentSuccess") {
     window.dispatchEvent(new CustomEvent("WallexaPaymentSuccessEvent", {
@@ -32,5 +32,12 @@ chrome.runtime.onMessage.addListener((message) => {
     }));
   } else if (message.type === "WallexaPaymentCancel") {
     window.dispatchEvent(new CustomEvent("WallexaPaymentCancelEvent"));
+  } else if (message.type === "WallexaBalanceRefresh") {
+    window.dispatchEvent(new CustomEvent("WallexaBalanceRefresh", {
+      detail: {
+        newBalance: message.newBalance,
+        amount: message.amount,
+      }
+    }));
   }
 });

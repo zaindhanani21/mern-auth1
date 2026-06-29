@@ -1,3 +1,20 @@
+const API_BASE = "https://mern-auth1-qnmh.onrender.com";
+const APP_URL = "https://mern-auth1-flame.vercel.app";
+
+const WALLEXA_TAB_URLS = [
+  `${APP_URL}/*`,
+  "http://localhost:5173/*",
+  "http://127.0.0.1:5173/*",
+];
+
+const notifyWallexaTabs = (message) => {
+  chrome.tabs.query({ url: WALLEXA_TAB_URLS }, (tabs) => {
+    tabs.forEach((tab) => {
+      chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+    });
+  });
+};
+
 document.addEventListener("DOMContentLoaded", async () => {
   const userEmailEl = document.getElementById("user-email");
   const merchantDescEl = document.getElementById("merchant-desc");
@@ -25,12 +42,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Fetch Merchant Owner Name dynamically by mobile number from backend DB
       if (token && checkoutData.merchantMobile) {
         try {
-          const res = await fetch(`http://192.168.43.54:5000/api/profile/mobile/${checkoutData.merchantMobile}`, {
+          const res = await fetch(`${API_BASE}/api/profile/mobile/${checkoutData.merchantMobile}`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.ok) {
             const merchantInfo = await res.json();
-            // Show first name (and last name if available)
             merchantOwnerNameEl.textContent = merchantInfo.firstName;
           } else {
             merchantOwnerNameEl.textContent = "Unknown";
@@ -69,7 +85,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 1. Load User Session & Current Balance
   chrome.storage.local.get(["userData", "pendingCheckout"], async (data) => {
     if (!data.userData) {
-      userEmailEl.textContent = "Please log in on http://192.168.43.54:5173 first.";
+      userEmailEl.textContent = `Please log in on ${APP_URL} first.`;
       userEmailEl.style.color = "#ef4444";
       return;
     }
@@ -83,7 +99,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Fetch live balance and validate
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/wallet/dashboard", {
+      const res = await fetch(`${API_BASE}/api/wallet/dashboard`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -117,7 +133,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const oldVal = changes.pendingCheckout.oldValue;
       const newVal = changes.pendingCheckout.newValue;
       
-      // If the description or amount changed (meaning it's a new item), clear status message
       if (!oldVal || !newVal || oldVal.description !== newVal.description || oldVal.amount !== newVal.amount) {
         statusMsg.textContent = "";
       }
@@ -138,7 +153,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const otpVal = otpCodeInput.value || null;
 
     try {
-      const res = await fetch("http://192.168.43.54:5000/api/wallet/extension-checkout", {
+      const res = await fetch(`${API_BASE}/api/wallet/extension-checkout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -156,7 +171,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (res.ok) {
         if (data.requiresOtp) {
-          // Save the otpRequested flag to storage so it persists if the popup closes!
           chrome.storage.local.set({
             pendingCheckout: { ...checkoutData, otpRequested: true }
           }, () => {
@@ -167,18 +181,22 @@ document.addEventListener("DOMContentLoaded", async () => {
             payBtn.textContent = "Confirm Payment";
           });
         } else {
-          // Send success message to webpage tab
+          // Notify mock store tab
           chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
               chrome.tabs.sendMessage(tabs[0].id, {
                 type: "WallexaPaymentSuccess",
                 amount: Number(checkoutData.amount),
                 description: checkoutData.description
-              });
+              }).catch(() => {});
             }
           });
 
-          // Clear pending checkout on success
+          // Refresh balance on any open Wallexa dashboard tab (customer + merchant)
+          notifyWallexaTabs({
+            type: "WallexaBalanceRefresh",
+          });
+
           chrome.storage.local.remove("pendingCheckout", () => {
             document.body.innerHTML = `
               <div class="container" style="padding: 30px 10px;">
@@ -206,16 +224,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // 4. Handle Cancel Button Click
   cancelBtn.addEventListener("click", () => {
-    // Send cancel message to webpage tab
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: "WallexaPaymentCancel" });
+        chrome.tabs.sendMessage(tabs[0].id, { type: "WallexaPaymentCancel" }).catch(() => {});
       }
     });
 
-    // Clear pending checkout
     chrome.storage.local.remove("pendingCheckout", () => {
-      window.close(); // Close extension popup
+      window.close();
     });
   });
 });

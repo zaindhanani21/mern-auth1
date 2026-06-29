@@ -40,6 +40,15 @@ const notifyUser = async (userId, title, message, type, io) => {
   }
 };
 
+// Push updated wallet balance instantly to open dashboard tabs
+const emitBalanceUpdate = (userId, balance, io) => {
+  if (io && userId != null) {
+    io.to(userId.toString()).emit("balance_updated", {
+      balance: Number(balance),
+    });
+  }
+};
+
 // Helper to verify Transaction PIN & manage lockouts globally
 const verifyTransactionPin = async (userId, pin) => {
   const wallet = await Wallet.findOne({ userId });
@@ -473,6 +482,8 @@ router.get("/stripe-callback", async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    emitBalanceUpdate(userId, wallet.balance, req.io);
+
     // Real-time notification
     notifyUser(
       userId,
@@ -570,6 +581,9 @@ router.post("/send-money", protect, async (req, res) => {
     await tx.save({ session });
 
     await session.commitTransaction();
+
+    emitBalanceUpdate(req.user._id, senderWallet.balance, req.io);
+    emitBalanceUpdate(recipientUser._id, receiverWallet.balance, req.io);
 
     // Real-time Notifications
     notifyUser(
@@ -1698,6 +1712,10 @@ router.post("/extension-checkout", protect, async (req, res) => {
     await tx.save({ session });
 
     await session.commitTransaction();
+
+    // Instant balance sync for customer & merchant dashboards
+    emitBalanceUpdate(req.user._id, senderWallet.balance, req.io);
+    emitBalanceUpdate(merchantUser._id, receiverWallet.balance, req.io);
 
     // Real-time notification to merchant
     notifyUser(

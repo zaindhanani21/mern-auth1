@@ -5,7 +5,8 @@
   "description": "Secure One-Tap Checkout Extension for Wallexa Wallet",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "tabs"
   ],
  "hostPermissions": [
   "https://mern-auth1-flame.vercel.app/*",
